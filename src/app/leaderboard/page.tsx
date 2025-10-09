@@ -35,7 +35,6 @@ interface LeaderboardEntry {
   score: number;
   testsCompleted: number;
   accuracy: number;
-  streak: number;
   change: number;
   badges: string[];
 }
@@ -55,9 +54,8 @@ export default function LeaderboardPage() {
       score: 2450,
       testsCompleted: 48,
       accuracy: 94,
-      streak: 28,
       change: 2,
-      badges: ["Top Performer", "100 Day Streak", "Problem Solver"]
+      badges: ["Top Performer", "Problem Solver"]
     },
     {
       rank: 2,
@@ -66,7 +64,6 @@ export default function LeaderboardPage() {
       score: 2380,
       testsCompleted: 52,
       accuracy: 92,
-      streak: 21,
       change: -1,
       badges: ["Algorithm Master", "Speed Demon"]
     },
@@ -77,7 +74,6 @@ export default function LeaderboardPage() {
       score: 2290,
       testsCompleted: 45,
       accuracy: 91,
-      streak: 19,
       change: 1,
       badges: ["System Design Pro", "Full Stack"]
     }
@@ -92,7 +88,6 @@ export default function LeaderboardPage() {
       score: 2180,
       testsCompleted: 41,
       accuracy: 89,
-      streak: 15,
       change: 3,
       badges: ["Data Structures"]
     },
@@ -103,7 +98,6 @@ export default function LeaderboardPage() {
       score: 2120,
       testsCompleted: 38,
       accuracy: 90,
-      streak: 12,
       change: -2,
       badges: ["Frontend Guru"]
     },
@@ -114,7 +108,6 @@ export default function LeaderboardPage() {
       score: 2050,
       testsCompleted: 44,
       accuracy: 87,
-      streak: 18,
       change: 0,
       badges: ["Backend Expert"]
     },
@@ -125,7 +118,6 @@ export default function LeaderboardPage() {
       score: 1980,
       testsCompleted: 36,
       accuracy: 88,
-      streak: 10,
       change: 4,
       badges: ["Rising Star"]
     },
@@ -136,7 +128,6 @@ export default function LeaderboardPage() {
       score: 1920,
       testsCompleted: 40,
       accuracy: 86,
-      streak: 14,
       change: -1,
       badges: ["Consistent"]
     }
@@ -144,9 +135,9 @@ export default function LeaderboardPage() {
 
   const achievements = [
     { name: "Top 100", icon: Trophy, color: "text-yellow-500", count: 1240 },
-    { name: "Speed Run", icon: Zap, color: "text-blue-500", count: 856 },
-    { name: "Perfect Score", icon: Target, color: "text-green-500", count: 432 },
-    { name: "100 Tests", icon: Award, color: "text-purple-500", count: 2180 }
+    { name: "Speed Run", icon: Zap, color: "text-[#6633FF]", count: 856 },
+    { name: "Perfect Score", icon: Target, color: "text-[#00CC66]", count: 432 },
+    { name: "100 Tests", icon: Award, color: "text-[#AA66FF]", count: 2180 }
   ];
 
   const getRankIcon = (rank: number) => {
@@ -238,7 +229,7 @@ export default function LeaderboardPage() {
               </div>
             </div>
             <div className="text-right">
-              <div className="flex items-center gap-2 text-green-500 mb-1">
+              <div className="flex items-center gap-2 text-[#00CC66] mb-1">
                 <TrendingUp className="w-5 h-5" />
                 <span className="font-semibold">+12 positions</span>
               </div>
@@ -303,8 +294,8 @@ export default function LeaderboardPage() {
                       <span className="font-semibold">{performer.accuracy}%</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Streak</span>
-                      <span className="font-semibold">{performer.streak} days 🔥</span>
+                      <span className="text-muted-foreground">Tests</span>
+                      <span className="font-semibold">{performer.testsCompleted}</span>
                     </div>
                   </div>
                 </Card>
@@ -322,7 +313,7 @@ export default function LeaderboardPage() {
                       <th className="px-6 py-4 text-left text-sm font-semibold">Score</th>
                       <th className="px-6 py-4 text-left text-sm font-semibold">Tests</th>
                       <th className="px-6 py-4 text-left text-sm font-semibold">Accuracy</th>
-                      <th className="px-6 py-4 text-left text-sm font-semibold">Streak</th>
+                      <th className="px-6 py-4 text-left text-sm font-semibold">Tests</th>
                       <th className="px-6 py-4 text-left text-sm font-semibold">Change</th>
                       <th className="px-6 py-4 text-left text-sm font-semibold">Badges</th>
                     </tr>
@@ -367,16 +358,13 @@ export default function LeaderboardPage() {
                           <Badge variant="outline">{entry.accuracy}%</Badge>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-1">
-                            <span className="font-semibold">{entry.streak}</span>
-                            <span className="text-orange-500">🔥</span>
-                          </div>
+                          <span className="font-semibold">{entry.testsCompleted}</span>
                         </td>
                         <td className="px-6 py-4">
                           {entry.change !== 0 && (
                             <div
                               className={`flex items-center gap-1 ${
-                                entry.change > 0 ? "text-green-500" : "text-red-500"
+                                entry.change > 0 ? "text-[#00CC66]" : "text-red-500"
                               }`}
                             >
                               {entry.change > 0 ? (

@@ -23,13 +23,8 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  turbopack: {
-    rules: {
-      "*.{jsx,tsx}": {
-        loaders: [LOADER]
-      }
-    }
-  }
+  // Disable custom Turbopack loader in dev to avoid Windows chunk errors
+  turbopack: undefined
 };
 
 export default nextConfig;

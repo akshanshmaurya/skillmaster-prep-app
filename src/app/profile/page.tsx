@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { getAuthToken, getAuthUser } from "@/lib/auth";
 import AppShell from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,19 +47,78 @@ import {
 } from "recharts";
 
 export default function ProfilePage() {
+  const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
+  const [userProfile, setUserProfile] = useState({
+    name: "",
+    email: "",
+    location: "",
+    targetRole: "",
+    company: "",
+    bio: "",
+    joinDate: "",
+    avatar: "",
+    linkedin: "",
+    github: "",
+    portfolio: "",
+    college: "",
+    gradYear: "",
+  });
+  const [loading, setLoading] = useState(true);
 
-  const userProfile = {
-    name: "Alex Kumar",
-    username: "@alexkumar",
-    email: "alex.kumar@example.com",
-    location: "San Francisco, CA",
-    role: "Software Engineer",
-    company: "Tech Startup",
-    bio: "Passionate about algorithms and system design. Preparing for FAANG interviews. Love solving complex problems and building scalable systems.",
-    joinDate: "January 2024",
-    avatar: "AK"
-  };
+  useEffect(() => {
+    const checkAuth = () => {
+      const token = getAuthToken();
+      const user = getAuthUser();
+      
+      if (!token || !user) {
+        router.push('/login');
+        return;
+      }
+
+      // Check if profile is complete, redirect if not
+      if (!user.isProfileComplete) {
+        router.push('/complete-profile');
+        return;
+      }
+
+      // Set user profile from stored data
+      setUserProfile({
+        name: user.name || "",
+        email: user.email || "",
+        location: user.location || "",
+        targetRole: user.targetRole || "",
+        company: user.company || "",
+        bio: user.bio || "",
+        joinDate: new Date(user.createdAt || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+        avatar: user.name ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : "U",
+        linkedin: user.linkedin || "",
+        github: user.github || "",
+        portfolio: user.portfolio || "",
+        college: user.college || "",
+        gradYear: user.gradYear || "",
+      });
+      
+      setLoading(false);
+    };
+
+    checkAuth();
+  }, [router]);
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="p-8 max-w-7xl">
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Loading profile...</p>
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   const stats = {
     rank: 127,
@@ -65,7 +126,6 @@ export default function ProfilePage() {
     testsCompleted: 24,
     questionsSolved: 342,
     studyHours: 89,
-    streak: 12,
     accuracy: 78,
     avgTime: 45
   };
@@ -90,7 +150,6 @@ export default function ProfilePage() {
   ];
 
   const achievements = [
-    { name: "100 Day Streak", icon: "🔥", date: "Nov 2024", rarity: "Legendary" },
     { name: "Speed Demon", icon: "⚡", date: "Nov 2024", rarity: "Epic" },
     { name: "Problem Solver", icon: "🧩", date: "Oct 2024", rarity: "Rare" },
     { name: "Early Bird", icon: "🌅", date: "Oct 2024", rarity: "Common" },
@@ -113,10 +172,18 @@ export default function ProfilePage() {
   const getRarityColor = (rarity: string) => {
     switch (rarity) {
       case "Legendary": return "text-yellow-500 bg-yellow-500/10 border-yellow-500";
-      case "Epic": return "text-purple-500 bg-purple-500/10 border-purple-500";
-      case "Rare": return "text-blue-500 bg-blue-500/10 border-blue-500";
+      case "Epic": return "text-[#AA66FF] bg-[#AA66FF]/10 border-[#AA66FF]";
+      case "Rare": return "text-[#6633FF] bg-[#6633FF]/10 border-[#6633FF]";
       default: return "text-gray-500 bg-gray-500/10 border-gray-500";
     }
+  };
+
+  const formatUrl = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    return `https://${url}`;
   };
 
   return (
@@ -138,7 +205,7 @@ export default function ProfilePage() {
                     Rank #{stats.rank}
                   </Badge>
                 </div>
-                <p className="text-muted-foreground mb-4">{userProfile.username}</p>
+                <p className="text-muted-foreground mb-4">@{userProfile.email.split('@')[0]}</p>
                 
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4">
                   <div className="flex items-center gap-2 text-sm">
@@ -151,7 +218,7 @@ export default function ProfilePage() {
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Briefcase className="w-4 h-4 text-muted-foreground" />
-                    <span>{userProfile.role} at {userProfile.company}</span>
+                    <span>{userProfile.targetRole}{userProfile.company ? ` at ${userProfile.company}` : ''}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -177,18 +244,33 @@ export default function ProfilePage() {
 
           {/* Social Links */}
           <div className="flex gap-2 pt-4 border-t border-border">
-            <Button variant="ghost" size="sm">
-              <Github className="w-4 h-4 mr-2" />
-              GitHub
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Linkedin className="w-4 h-4 mr-2" />
-              LinkedIn
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Globe className="w-4 h-4 mr-2" />
-              Portfolio
-            </Button>
+            {userProfile.github && (
+              <Button variant="ghost" size="sm" asChild>
+                <a href={formatUrl(userProfile.github)} target="_blank" rel="noopener noreferrer">
+                  <Github className="w-4 h-4 mr-2" />
+                  GitHub
+                </a>
+              </Button>
+            )}
+            {userProfile.linkedin && (
+              <Button variant="ghost" size="sm" asChild>
+                <a href={formatUrl(userProfile.linkedin)} target="_blank" rel="noopener noreferrer">
+                  <Linkedin className="w-4 h-4 mr-2" />
+                  LinkedIn
+                </a>
+              </Button>
+            )}
+            {userProfile.portfolio && (
+              <Button variant="ghost" size="sm" asChild>
+                <a href={formatUrl(userProfile.portfolio)} target="_blank" rel="noopener noreferrer">
+                  <Globe className="w-4 h-4 mr-2" />
+                  Portfolio
+                </a>
+              </Button>
+            )}
+            {!userProfile.github && !userProfile.linkedin && !userProfile.portfolio && (
+              <p className="text-sm text-muted-foreground">No social links added yet</p>
+            )}
           </div>
         </Card>
 
@@ -200,7 +282,7 @@ export default function ProfilePage() {
               <Trophy className="w-5 h-5 text-yellow-500" />
             </div>
             <div className="text-3xl font-bold">{stats.totalScore}</div>
-            <div className="flex items-center gap-1 text-sm text-green-500 mt-1">
+            <div className="flex items-center gap-1 text-sm text-[#00CC66] mt-1">
               <TrendingUp className="w-4 h-4" />
               <span>+125 this week</span>
             </div>
@@ -209,7 +291,7 @@ export default function ProfilePage() {
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Tests Completed</span>
-              <CheckCircle2 className="w-5 h-5 text-green-500" />
+              <CheckCircle2 className="w-5 h-5 text-[#00CC66]" />
             </div>
             <div className="text-3xl font-bold">{stats.testsCompleted}</div>
             <p className="text-xs text-muted-foreground mt-1">342 questions solved</p>
@@ -218,7 +300,7 @@ export default function ProfilePage() {
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Study Hours</span>
-              <Clock className="w-5 h-5 text-blue-500" />
+              <Clock className="w-5 h-5 text-[#6633FF]" />
             </div>
             <div className="text-3xl font-bold">{stats.studyHours}h</div>
             <Progress value={74} className="h-2 mt-2" />
@@ -226,11 +308,11 @@ export default function ProfilePage() {
 
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Current Streak</span>
-              <Zap className="w-5 h-5 text-orange-500" />
+              <span className="text-sm text-muted-foreground">Questions Solved</span>
+              <Zap className="w-5 h-5 text-[#AA66FF]" />
             </div>
-            <div className="text-3xl font-bold">{stats.streak} days</div>
-            <p className="text-xs text-muted-foreground mt-1">Keep it going! 🔥</p>
+            <div className="text-3xl font-bold">{stats.questionsSolved}</div>
+            <p className="text-xs text-muted-foreground mt-1">Keep practicing! 💪</p>
           </Card>
         </div>
 
@@ -298,8 +380,8 @@ export default function ProfilePage() {
                 {[1, 2, 3, 4, 5].map((_, index) => (
                   <div key={index} className="flex items-center justify-between p-4 bg-muted rounded-lg">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                      <div className="w-10 h-10 rounded-lg bg-[#00CC66]/10 flex items-center justify-center">
+                        <CheckCircle2 className="w-5 h-5 text-[#00CC66]" />
                       </div>
                       <div>
                         <h4 className="font-medium">Two Sum Problem</h4>

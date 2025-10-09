@@ -48,7 +48,6 @@ export default function InsightsPage() {
   // AI-powered data
   const overallScore = 76;
   const learningVelocity = 12; // % improvement per week
-  const studyStreak = 12;
   const predictedScore = 85;
 
   const skillsData = [
@@ -158,7 +157,7 @@ export default function InsightsPage() {
     {
       type: "strength",
       icon: CheckCircle2,
-      color: "text-green-500",
+      color: "text-[#00CC66]",
       title: "Strong Foundation in Data Structures",
       description: "You consistently score 85%+ on array, string, and hash table problems. This solid foundation will help you tackle more complex challenges."
     },
@@ -172,14 +171,14 @@ export default function InsightsPage() {
     {
       type: "opportunity",
       icon: TrendingUp,
-      color: "text-blue-500",
+      color: "text-[#6633FF]",
       title: "Rapid Improvement in API Design",
       description: "15% improvement in just 2 weeks! Your learning velocity here suggests you're ready for advanced backend topics."
     },
     {
       type: "prediction",
       icon: Target,
-      color: "text-purple-500",
+      color: "text-[#AA66FF]",
       title: "85% Score Achievable in 4 Weeks",
       description: "Based on your current trajectory, maintaining 20 hours/week study will get you to target score by next month."
     }
@@ -189,7 +188,7 @@ export default function InsightsPage() {
     switch (severity) {
       case "high": return "text-red-500 bg-red-500/10 border-red-500";
       case "medium": return "text-yellow-500 bg-yellow-500/10 border-yellow-500";
-      case "low": return "text-green-500 bg-green-500/10 border-green-500";
+      case "low": return "text-[#00CC66] bg-[#00CC66]/10 border-[#00CC66]";
       default: return "";
     }
   };
@@ -218,7 +217,7 @@ export default function InsightsPage() {
               <Trophy className="w-5 h-5 text-yellow-500" />
             </div>
             <div className="text-3xl font-bold mb-1">{overallScore}%</div>
-            <div className="flex items-center gap-1 text-sm text-green-500">
+            <div className="flex items-center gap-1 text-sm text-[#00CC66]">
               <TrendingUp className="w-4 h-4" />
               <span>+8% this week</span>
             </div>
@@ -227,7 +226,7 @@ export default function InsightsPage() {
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Learning Velocity</span>
-              <Zap className="w-5 h-5 text-blue-500" />
+              <Zap className="w-5 h-5 text-[#6633FF]" />
             </div>
             <div className="text-3xl font-bold mb-1">{learningVelocity}%</div>
             <p className="text-xs text-muted-foreground">Improvement per week</p>
@@ -235,17 +234,17 @@ export default function InsightsPage() {
 
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-muted-foreground">Study Streak</span>
-              <Target className="w-5 h-5 text-orange-500" />
+              <span className="text-sm text-muted-foreground">Study Goal</span>
+              <Target className="w-5 h-5 text-[#6633FF]" />
             </div>
-            <div className="text-3xl font-bold mb-1">{studyStreak} days</div>
-            <p className="text-xs text-muted-foreground">Keep it going! 🔥</p>
+            <div className="text-3xl font-bold mb-1">90%</div>
+            <p className="text-xs text-muted-foreground">Target accuracy</p>
           </Card>
 
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-muted-foreground">Predicted Score</span>
-              <Brain className="w-5 h-5 text-purple-500" />
+              <Brain className="w-5 h-5 text-[#AA66FF]" />
             </div>
             <div className="text-3xl font-bold mb-1">{predictedScore}%</div>
             <p className="text-xs text-muted-foreground">In 4 weeks</p>
@@ -380,7 +379,7 @@ export default function InsightsPage() {
                         </div>
                         <div>
                           <span className="text-sm text-muted-foreground">Trend</span>
-                          <div className={`text-2xl font-bold flex items-center gap-1 ${weakness.improvement > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          <div className={`text-2xl font-bold flex items-center gap-1 ${weakness.improvement > 0 ? 'text-[#00CC66]' : 'text-red-500'}`}>
                             {weakness.improvement > 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
                             {Math.abs(weakness.improvement)}%
                           </div>
@@ -455,7 +454,7 @@ export default function InsightsPage() {
             <div className="grid grid-cols-3 gap-4">
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
-                  <Clock className="w-8 h-8 text-blue-500" />
+                  <Clock className="w-8 h-8 text-[#6633FF]" />
                   <div>
                     <div className="text-2xl font-bold">89h</div>
                     <div className="text-sm text-muted-foreground">Total Study Time</div>
@@ -467,7 +466,7 @@ export default function InsightsPage() {
 
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
-                  <Target className="w-8 h-8 text-green-500" />
+                  <Target className="w-8 h-8 text-[#00CC66]" />
                   <div>
                     <div className="text-2xl font-bold">24</div>
                     <div className="text-sm text-muted-foreground">Tests Completed</div>
@@ -479,7 +478,7 @@ export default function InsightsPage() {
 
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
-                  <TrendingUp className="w-8 h-8 text-purple-500" />
+                  <TrendingUp className="w-8 h-8 text-[#AA66FF]" />
                   <div>
                     <div className="text-2xl font-bold">+18%</div>
                     <div className="text-sm text-muted-foreground">Total Improvement</div>
@@ -541,8 +540,8 @@ export default function InsightsPage() {
           <TabsContent value="path" className="space-y-6">
             <Card className="p-6 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border-blue-500/20">
               <div className="flex items-start gap-4">
-                <div className="p-3 rounded-lg bg-blue-500/10">
-                  <Lightbulb className="w-8 h-8 text-blue-500" />
+                <div className="p-3 rounded-lg bg-[#6633FF]/10">
+                  <Lightbulb className="w-8 h-8 text-[#6633FF]" />
                 </div>
                 <div className="flex-1">
                   <h3 className="text-xl font-bold mb-2">Personalized Learning Roadmap</h3>
@@ -571,7 +570,7 @@ export default function InsightsPage() {
                       <div className="space-y-2">
                         {phase.tasks.map((task, taskIndex) => (
                           <div key={taskIndex} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${task.completed ? 'bg-green-500 border-green-500' : 'border-muted-foreground'}`}>
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${task.completed ? 'bg-[#00CC66] border-[#00CC66]' : 'border-muted-foreground'}`}>
                               {task.completed && <CheckCircle2 className="w-4 h-4 text-white" />}
                             </div>
                             <span className={`flex-1 ${task.completed ? 'line-through text-muted-foreground' : ''}`}>

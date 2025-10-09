@@ -119,10 +119,10 @@ export default function InterviewPage() {
 
   const interviewSetup = {
     companies: [
-      { value: "google", label: "Google", color: "bg-blue-500" },
-      { value: "amazon", label: "Amazon", color: "bg-orange-500" },
+      { value: "google", label: "Google", color: "bg-[#6633FF]" },
+      { value: "amazon", label: "Amazon", color: "bg-[#AA66FF]" },
       { value: "microsoft", label: "Microsoft", color: "bg-cyan-500" },
-      { value: "meta", label: "Meta", color: "bg-blue-600" },
+      { value: "meta", label: "Meta", color: "bg-[#6633FF]" },
       { value: "apple", label: "Apple", color: "bg-gray-500" }
     ],
     roles: [
@@ -233,7 +233,7 @@ export default function InterviewPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                       <div className="flex items-center gap-3">
-                        {micEnabled ? <Mic className="w-5 h-5 text-green-500" /> : <MicOff className="w-5 h-5 text-red-500" />}
+                        {micEnabled ? <Mic className="w-5 h-5 text-[#00CC66]" /> : <MicOff className="w-5 h-5 text-red-500" />}
                         <span>Microphone</span>
                       </div>
                       <Button 
@@ -247,7 +247,7 @@ export default function InterviewPage() {
 
                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                       <div className="flex items-center gap-3">
-                        {videoEnabled ? <Video className="w-5 h-5 text-green-500" /> : <VideoOff className="w-5 h-5 text-red-500" />}
+                        {videoEnabled ? <Video className="w-5 h-5 text-[#00CC66]" /> : <VideoOff className="w-5 h-5 text-red-500" />}
                         <span>Camera</span>
                       </div>
                       <Button 
@@ -261,7 +261,7 @@ export default function InterviewPage() {
 
                     <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
                       <div className="flex items-center gap-3">
-                        {audioEnabled ? <Volume2 className="w-5 h-5 text-green-500" /> : <VolumeX className="w-5 h-5 text-red-500" />}
+                        {audioEnabled ? <Volume2 className="w-5 h-5 text-[#00CC66]" /> : <VolumeX className="w-5 h-5 text-red-500" />}
                         <span>Audio</span>
                       </div>
                       <Button 
@@ -382,7 +382,7 @@ export default function InterviewPage() {
                         key={index}
                         className={`flex gap-3 ${message.role === "candidate" ? "flex-row-reverse" : ""}`}
                       >
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${message.role === "interviewer" ? "bg-primary" : "bg-green-500"}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${message.role === "interviewer" ? "bg-primary" : "bg-[#00CC66]"}`}>
                           {message.role === "interviewer" ? (
                             <Brain className="w-5 h-5 text-primary-foreground" />
                           ) : (
@@ -468,13 +468,13 @@ export default function InterviewPage() {
 
                       <Card className="p-4">
                         <div className="flex items-center gap-2 mb-3">
-                          <CheckCircle2 className="w-4 h-4 text-green-500" />
+                          <CheckCircle2 className="w-4 h-4 text-[#00CC66]" />
                           <h4 className="font-semibold text-sm">Strengths</h4>
                         </div>
                         <ul className="space-y-2 text-xs">
                           {aiAnalysis.strengths.map((strength, idx) => (
                             <li key={idx} className="flex items-start gap-2">
-                              <span className="text-green-500">✓</span>
+                              <span className="text-[#00CC66]">✓</span>
                               <span className="text-muted-foreground">{strength}</span>
                             </li>
                           ))}
