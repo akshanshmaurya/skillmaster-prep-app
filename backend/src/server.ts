@@ -7,6 +7,7 @@ import cors from 'cors';
 import { testConnection } from './config/database';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
+import interviewRoutes from './routes/interview';
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/interview', interviewRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -43,6 +45,19 @@ app.get('/', (req: Request, res: Response) => {
         update: 'PATCH /api/user/update',
         stats: 'PATCH /api/user/stats',
         getUser: 'GET /api/user/:id'
+      },
+      interview: {
+        profile: 'POST /api/interview/profile',
+        getProfile: 'GET /api/interview/profile',
+        createSession: 'POST /api/interview/sessions',
+        getSession: 'GET /api/interview/sessions/:sessionId',
+        startSession: 'POST /api/interview/sessions/:sessionId/start',
+        getQuestions: 'GET /api/interview/questions',
+        submitAnswer: 'POST /api/interview/sessions/:sessionId/answer',
+        getMessages: 'GET /api/interview/sessions/:sessionId/messages',
+        completeSession: 'POST /api/interview/sessions/:sessionId/complete',
+        getHistory: 'GET /api/interview/history',
+        getAnalytics: 'GET /api/interview/analytics'
       }
     }
   });

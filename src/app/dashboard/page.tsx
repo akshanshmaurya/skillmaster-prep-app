@@ -95,7 +95,7 @@ export default function DashboardPage() {
       <div className="p-8 max-w-7xl">
         {/* Hero Section */}
         <section className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Welcome back, Alex!</h1>
+          <h1 className="text-4xl font-bold mb-2">Welcome back, Akshansh!</h1>
           <p className="text-muted-foreground text-lg">Continue your placement preparation journey</p>
         </section>
 

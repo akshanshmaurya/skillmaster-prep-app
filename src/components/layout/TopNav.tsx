@@ -32,7 +32,7 @@ export default function TopNav() {
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <span className="text-primary-foreground font-bold text-lg">P</span>
             </div>
-            <span className="font-bold text-xl">PlacementPrep</span>
+            <span className="font-bold text-xl">PrepPro</span>
           </Link>
           
           <div className="relative w-96">
