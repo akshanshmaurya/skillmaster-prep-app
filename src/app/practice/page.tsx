@@ -1,49 +1,124 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
-import { getAuthToken, getAuthUser } from "@/lib/auth";
+import { Calculator, MessageCircle, Compass, Brain, Gamepad2, Sparkles, Target, ArrowRight, ChevronLeft, ChevronRight, Clock, ListChecks, CheckCircle2, XCircle, Trophy } from "lucide-react";
+
 import AppShell from "@/components/layout/AppShell";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Search, 
-  Filter, 
-  Clock, 
-  Users, 
-  Star, 
-  TrendingUp, 
-  Target, 
-  Zap,
-  BookOpen,
-  Code,
-  Database,
-  Globe,
-  Smartphone,
-  Server,
-  Brain,
-  CheckCircle2,
-  Play,
-  Award,
-  Timer
-} from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
+
+import { practiceApi, type PracticeQuestion, type PracticeEvaluation, type PracticeSummary, type PracticeTopic, type PracticeDifficulty } from "@/lib/api/practice";
+import { getAuthToken, getAuthUser } from "@/lib/auth";
+import { cn } from "@/lib/utils";
+
+type TopicMeta = {
+  label: string;
+  description: string;
+  gradient: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+const TOPIC_META: Record<PracticeTopic, TopicMeta> = {
+  quant: {
+    label: "Quantitative Aptitude",
+    description: "Percentages, ratios, rate-time puzzles, and number agility drills.",
+    gradient: "from-sky-500 to-indigo-500",
+    icon: Calculator
+  },
+  verbal: {
+    label: "Verbal Ability",
+    description: "Grammar, vocabulary, tone detection, and communication clarity.",
+    gradient: "from-rose-500 to-orange-500",
+    icon: MessageCircle
+  },
+  aptitude: {
+    label: "General Aptitude",
+    description: "Series, coding-decoding, probability, and data interpretation." ,
+    gradient: "from-emerald-500 to-teal-500",
+    icon: Compass
+  },
+  reasoning: {
+    label: "Logical Reasoning",
+    description: "Syllogisms, direction sense, seating, and critical thinking drills.",
+    gradient: "from-purple-500 to-fuchsia-500",
+    icon: Brain
+  },
+  games: {
+    label: "Brain Games",
+    description: "Puzzles, strategy games, anagrams, and mental agility boosters.",
+    gradient: "from-amber-500 to-red-500",
+    icon: Gamepad2
+  }
+};
+
+const DIFFICULTY_META: Record<PracticeDifficulty, { label: string; blurb: string; accent: string }> = {
+  beginner: {
+    label: "Beginner",
+    blurb: "Build fluency with guided fundamentals.",
+    accent: "bg-emerald-100 text-emerald-700 border-emerald-200"
+  },
+  intermediate: {
+    label: "Intermediate",
+    blurb: "Challenge your pattern recognition and timing.",
+    accent: "bg-amber-100 text-amber-700 border-amber-200"
+  },
+  advanced: {
+    label: "Advanced",
+    blurb: "Simulate pressure with multi-step interview puzzles.",
+    accent: "bg-rose-100 text-rose-700 border-rose-200"
+  }
+};
+
+const DEFAULT_TOPICS = (Object.keys(TOPIC_META) as PracticeTopic[]).map((id) => ({
+  id,
+  name: TOPIC_META[id].label,
+  difficulties: ["beginner", "intermediate", "advanced"] as PracticeDifficulty[]
+}));
+
+const formatAnswer = (answer: string | string[], type: PracticeQuestion["answerType"]): string => {
+  if (type === "multiple-choice") {
+    if (Array.isArray(answer) && answer.length) {
+      return answer.join(", ");
+    }
+    return "—";
+  }
+
+  return typeof answer === "string" && answer.trim() ? answer : "—";
+};
+
+const percentage = (value: number) => `${Math.round(value * 100)}%`;
 
 export default function PracticePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [selectedDifficulty, setSelectedDifficulty] = useState("all");
+  const [topics, setTopics] = useState(DEFAULT_TOPICS);
+  const [selectedTopic, setSelectedTopic] = useState<PracticeTopic>("quant");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<PracticeDifficulty>("beginner");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [evaluation, setEvaluation] = useState<PracticeEvaluation | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<'idle' | 'active' | 'completed'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const checkAuth = () => {
+    const bootstrap = async () => {
       const token = getAuthToken();
       const user = getAuthUser();
-      
+
       if (!token || !user) {
         router.push('/login');
         return;
@@ -53,350 +128,584 @@ export default function PracticePage() {
         router.push('/complete-profile');
         return;
       }
-      
-      setLoading(false);
+
+      try {
+        const data = await practiceApi.getTopics();
+        if (data.topics?.length) {
+          const [firstTopic] = data.topics;
+          setTopics(data.topics);
+          setSelectedTopic(firstTopic.id);
+          if (firstTopic.difficulties?.length) {
+            setSelectedDifficulty(firstTopic.difficulties[0]);
+          }
+        }
+      } catch (err) {
+        console.warn('Falling back to default practice topics:', err);
+        setError('Using fallback topics until we reconnect to the server.');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    checkAuth();
+    bootstrap();
   }, [router]);
 
-  const categories = [
-    { id: "all", name: "All Topics", icon: BookOpen, color: "bg-blue-500" },
-    { id: "dsa", name: "Data Structures", icon: Database, color: "bg-green-500" },
-    { id: "algorithms", name: "Algorithms", icon: Brain, color: "bg-purple-500" },
-    { id: "frontend", name: "Frontend", icon: Globe, color: "bg-orange-500" },
-    { id: "backend", name: "Backend", icon: Server, color: "bg-red-500" },
-    { id: "mobile", name: "Mobile", icon: Smartphone, color: "bg-pink-500" },
-    { id: "system-design", name: "System Design", icon: Code, color: "bg-indigo-500" },
-  ];
+  const activeQuestion = questions[currentQuestionIndex];
+  const answerProgress = useMemo(() => {
+    if (!questions.length) return 0;
+    const answered = questions.filter((question) => {
+      const answer = answers[question.id];
+      if (question.answerType === 'multiple-choice') {
+        return Array.isArray(answer) && answer.length;
+      }
+      if (question.answerType === 'short-text') {
+        return typeof answer === 'string' && answer.trim().length > 0;
+      }
+      return typeof answer === 'string' && answer.length > 0;
+    }).length;
+    return Math.round((answered / questions.length) * 100);
+  }, [answers, questions]);
 
-  const difficulties = [
-    { id: "all", name: "All Levels", color: "bg-gray-500" },
-    { id: "easy", name: "Easy", color: "bg-green-500" },
-    { id: "medium", name: "Medium", color: "bg-yellow-500" },
-    { id: "hard", name: "Hard", color: "bg-red-500" },
-  ];
+  const handleStartSession = async () => {
+    setIsGenerating(true);
+    setError(null);
+    setEvaluation(null);
+    try {
+      const { sessionId: newSessionId, questions: generatedQuestions, topic, difficulty, status } = await practiceApi.generateSession({
+        topic: selectedTopic,
+        difficulty: selectedDifficulty,
+        count: 10
+      });
 
-  const practiceTests = [
-    {
-      id: 1,
-      title: "Array Manipulation Mastery",
-      category: "dsa",
-      difficulty: "easy",
-      duration: 45,
-      questions: 20,
-      completed: 1250,
-      rating: 4.8,
-      description: "Master the fundamentals of array operations and manipulations",
-      topics: ["Arrays", "Two Pointers", "Sliding Window"],
-      company: "Google",
-      featured: true
-    },
-    {
-      id: 2,
-      title: "Dynamic Programming Deep Dive",
-      category: "algorithms",
-      difficulty: "hard",
-      duration: 90,
-      questions: 15,
-      completed: 890,
-      rating: 4.9,
-      description: "Advanced dynamic programming patterns and optimization techniques",
-      topics: ["DP", "Memoization", "Tabulation", "State Space"],
-      company: "Amazon",
-      featured: true
-    },
-    {
-      id: 3,
-      title: "React Hooks & State Management",
-      category: "frontend",
-      difficulty: "medium",
-      duration: 60,
-      questions: 25,
-      completed: 2100,
-      rating: 4.7,
-      description: "Comprehensive React hooks and modern state management patterns",
-      topics: ["useState", "useEffect", "Context", "Redux"],
-      company: "Meta",
-      featured: false
-    },
-    {
-      id: 4,
-      title: "RESTful API Design",
-      category: "backend",
-      difficulty: "medium",
-      duration: 75,
-      questions: 18,
-      completed: 1650,
-      rating: 4.6,
-      description: "Design and implement scalable REST APIs",
-      topics: ["REST", "HTTP", "Authentication", "Rate Limiting"],
-      company: "Microsoft",
-      featured: false
-    },
-    {
-      id: 5,
-      title: "Database Optimization",
-      category: "backend",
-      difficulty: "hard",
-      duration: 80,
-      questions: 22,
-      completed: 980,
-      rating: 4.8,
-      description: "Advanced database query optimization and indexing strategies",
-      topics: ["SQL", "Indexing", "Query Optimization", "NoSQL"],
-      company: "Oracle",
-      featured: true
-    },
-    {
-      id: 6,
-      title: "System Design Fundamentals",
-      category: "system-design",
-      difficulty: "hard",
-      duration: 120,
-      questions: 12,
-      completed: 750,
-      rating: 4.9,
-      description: "Design scalable and distributed systems from scratch",
-      topics: ["Scalability", "Load Balancing", "Caching", "Microservices"],
-      company: "Netflix",
-      featured: true
+      setSessionId(newSessionId);
+      setQuestions(generatedQuestions.sort((a, b) => a.order - b.order));
+      setAnswers({});
+      setSessionStatus(status === 'completed' ? 'completed' : 'active');
+      setEvaluation(null);
+      setCurrentQuestionIndex(0);
+      setSelectedTopic(topic);
+      setSelectedDifficulty(difficulty);
+    } catch (err: any) {
+      console.error('Failed to create practice session', err);
+      setError(err?.message || 'Unable to start a practice session right now.');
+    } finally {
+      setIsGenerating(false);
     }
-  ];
+  };
 
-  const recentTests = [
-    { name: "Binary Tree Traversal", score: 85, date: "2 hours ago", difficulty: "Medium" },
-    { name: "Graph Algorithms", score: 78, date: "1 day ago", difficulty: "Hard" },
-    { name: "JavaScript Fundamentals", score: 92, date: "2 days ago", difficulty: "Easy" },
-  ];
+  const handleSubmitSession = async () => {
+    if (!sessionId) return;
+    setIsSubmitting(true);
+    setError(null);
 
-  const filteredTests = practiceTests.filter(test => {
-    const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         test.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         test.topics.some(topic => topic.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory = selectedCategory === "all" || test.category === selectedCategory;
-    const matchesDifficulty = selectedDifficulty === "all" || test.difficulty === selectedDifficulty;
-    
-    return matchesSearch && matchesCategory && matchesDifficulty;
-  });
+    try {
+      const payload = questions.map((question) => {
+        const answer = answers[question.id];
+        if (question.answerType === 'multiple-choice') {
+          return {
+            questionId: question.id,
+            answer: Array.isArray(answer) ? answer : []
+          };
+        }
+        return {
+          questionId: question.id,
+          answer: typeof answer === 'string' ? answer : ''
+        };
+      });
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "easy": return "bg-green-100 text-green-800 border-green-200";
-      case "medium": return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "hard": return "bg-red-100 text-red-800 border-red-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+      const result = await practiceApi.submitSession(sessionId, payload);
+      setEvaluation(result);
+      setSessionStatus('completed');
+    } catch (err: any) {
+      console.error('Failed to submit practice session', err);
+      setError(err?.message || 'Unable to submit answers right now.');
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleRadioAnswer = (questionId: string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  const handleCheckboxAnswer = (questionId: string, option: string, checked: boolean | "indeterminate") => {
+    setAnswers((prev) => {
+      const current = Array.isArray(prev[questionId]) ? [...(prev[questionId] as string[])] : [];
+      const exists = current.includes(option);
+      if (checked && !exists) {
+        current.push(option);
+      }
+      if (!checked && exists) {
+        return { ...prev, [questionId]: current.filter((item) => item !== option) };
+      }
+      return { ...prev, [questionId]: current };
+    });
+  };
+
+  const handleTextAnswer = (questionId: string, value: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: value }));
+  };
+
+  const resetSession = () => {
+    setSessionId(null);
+    setQuestions([]);
+    setAnswers({});
+    setEvaluation(null);
+    setSessionStatus('idle');
+    setCurrentQuestionIndex(0);
   };
 
   if (loading) {
     return (
       <AppShell>
-        <div className="p-8 max-w-7xl">
-          <div className="flex items-center justify-center h-64">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-muted-foreground">Loading practice tests...</p>
-            </div>
+        <div className="flex h-[60vh] items-center justify-center">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Spinner className="size-8 text-primary" />
+            <p className="text-sm text-muted-foreground">Loading your personalised practice hub…</p>
           </div>
         </div>
       </AppShell>
     );
   }
 
+  const topicMeta = TOPIC_META[selectedTopic];
+  const difficultyMeta = DIFFICULTY_META[selectedDifficulty];
+
   return (
     <AppShell>
-      <div className="p-8 max-w-7xl">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">Practice Tests</h1>
-          <p className="text-gray-600 text-lg">Sharpen your skills with our comprehensive test collection</p>
-        </div>
-
-        {/* Search and Filters */}
-        <Card className="p-6 mb-8">
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <Input 
-                placeholder="Search tests, topics, or companies..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-11 h-12 text-lg"
-              />
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pb-16 pt-10 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-3">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full bg-primary/10 px-4 py-1 text-sm font-medium text-primary">
+              <Sparkles className="size-4" />
+              Interview practice studio
             </div>
-            <Button size="lg" className="h-12 px-8">
-              <Zap className="w-4 h-4 mr-2" />
-              Quick Match
-            </Button>
+            <h1 className="text-balance text-3xl font-semibold sm:text-4xl">
+              Practice smarter with topic-focused interview drills
+            </h1>
+            <p className="max-w-2xl text-muted-foreground">
+              Choose a track, answer curated questions, and get actionable AI feedback in minutes. Replay sessions to see measurable progress before your next interview.
+            </p>
           </div>
 
-          {/* Category Filters */}
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Categories</h3>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => {
-                const Icon = category.icon;
-                return (
-                  <Button
-                    key={category.id}
-                    variant={selectedCategory === category.id ? "default" : "outline"}
-                    onClick={() => setSelectedCategory(category.id)}
-                    className={`h-10 px-4 ${selectedCategory === category.id ? 'bg-primary text-primary-foreground' : ''}`}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {category.name}
+          {error && (
+            <Alert variant="destructive" className="max-w-2xl">
+              <AlertTitle>Heads up</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          <Card>
+            <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-2">
+                <CardTitle className="text-2xl">Configure your next practice sprint</CardTitle>
+                <CardDescription>
+                  Pick a topic and difficulty to generate a fresh set of interview-style questions instantly.
+                </CardDescription>
+              </div>
+              <div className="flex flex-col items-start gap-1 text-left text-sm text-muted-foreground lg:items-end lg:text-right">
+                <span className="font-medium text-card-foreground">Selected</span>
+                <div>{topicMeta.label}</div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">{difficultyMeta.label}</div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-8">
+              <div className="grid gap-4 lg:grid-cols-5">
+                {topics.map((topic) => {
+                  const meta = TOPIC_META[topic.id];
+                  const active = topic.id === selectedTopic;
+                  const Icon = meta.icon;
+                  return (
+                    <button
+                      key={topic.id}
+                      type="button"
+                      onClick={() => setSelectedTopic(topic.id)}
+                      className={cn(
+                        'group relative flex h-full flex-col gap-3 rounded-2xl border p-4 text-left transition duration-200 hover:border-primary hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                        active && 'border-primary shadow-lg'
+                      )}
+                    >
+                      <div className={cn(
+                        'flex size-10 items-center justify-center rounded-xl text-white transition-all group-hover:scale-105',
+                        `bg-gradient-to-br ${meta.gradient}`
+                      )}>
+                        <Icon className="size-5" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-card-foreground">{meta.label}</span>
+                        <span className="text-xs leading-5 text-muted-foreground">{meta.description}</span>
+                      </div>
+                      {active && (
+                        <Badge className="absolute right-4 top-4 bg-primary/90">Selected</Badge>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <span className="text-sm font-semibold text-card-foreground">Difficulty</span>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {(topics.find((topic) => topic.id === selectedTopic)?.difficulties ?? ['beginner', 'intermediate', 'advanced']).map((difficulty) => {
+                    const meta = DIFFICULTY_META[difficulty];
+                    const active = difficulty === selectedDifficulty;
+                    return (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        onClick={() => setSelectedDifficulty(difficulty)}
+                        className={cn(
+                          'flex flex-col gap-1 rounded-2xl border p-4 text-left transition hover:border-primary/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+                          active && 'border-primary bg-primary/5 shadow-lg'
+                        )}
+                      >
+                        <span className="text-sm font-semibold text-card-foreground">{meta.label}</span>
+                        <span className="text-xs text-muted-foreground">{meta.blurb}</span>
+                        <Badge className={cn('mt-3 w-fit border text-xs font-medium', meta.accent)}>
+                          {meta.label}
+                        </Badge>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <ListChecks className="size-4" />
+                Questions adapt to your performance. Expect targeted explanations after you submit.
+              </div>
+              <div className="flex items-center gap-2">
+                {sessionStatus !== 'idle' && (
+                  <Button variant="ghost" onClick={resetSession} className="text-muted-foreground">
+                    Reset
                   </Button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Difficulty Filters */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Difficulty</h3>
-            <div className="flex flex-wrap gap-2">
-              {difficulties.map((difficulty) => (
-                <Button
-                  key={difficulty.id}
-                  variant={selectedDifficulty === difficulty.id ? "default" : "outline"}
-                  onClick={() => setSelectedDifficulty(difficulty.id)}
-                  className={`h-10 px-4 capitalize ${selectedDifficulty === difficulty.id ? 'bg-primary text-primary-foreground' : ''}`}
-                >
-                  {difficulty.name}
+                )}
+                <Button onClick={handleStartSession} disabled={isGenerating} className="gap-2">
+                  {isGenerating ? (
+                    <>
+                      <Spinner className="size-4" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      Start session
+                      <ArrowRight className="size-4" />
+                    </>
+                  )}
                 </Button>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        {/* Recent Tests */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">Recent Tests</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {recentTests.map((test, index) => (
-              <Card key={index} className="p-4 hover:shadow-md transition-shadow cursor-pointer">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold">{test.name}</h3>
-                  <Badge className={getDifficultyColor(test.difficulty)}>
-                    {test.difficulty}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between text-sm text-gray-600">
-                  <span>Score: {test.score}%</span>
-                  <span>{test.date}</span>
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-3">
-                  <Play className="w-4 h-4 mr-2" />
-                  Retake
-                </Button>
-              </Card>
-            ))}
-          </div>
+              </div>
+            </CardFooter>
+          </Card>
         </div>
 
-        {/* Practice Tests Grid */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">
-              {selectedCategory === "all" ? "All Tests" : categories.find(c => c.id === selectedCategory)?.name}
-              <span className="text-lg font-normal text-gray-500 ml-2">({filteredTests.length} tests)</span>
-            </h2>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-600">Sort by: Popularity</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {filteredTests.map((test) => {
-              const categoryInfo = categories.find(c => c.id === test.category);
-              const Icon = categoryInfo?.icon || BookOpen;
-              
-              return (
-                <Card key={test.id} className={`p-6 hover:shadow-lg transition-all duration-300 cursor-pointer group ${test.featured ? 'ring-2 ring-primary/20' : ''}`}>
-                  {test.featured && (
-                    <div className="flex items-center gap-2 mb-4">
-                      <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                      <Badge variant="secondary" className="text-xs">Featured</Badge>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-lg ${categoryInfo?.color} flex items-center justify-center`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-lg group-hover:text-primary transition-colors">{test.title}</h3>
-                        <p className="text-sm text-gray-600">{test.description}</p>
-                      </div>
-                    </div>
-                    <Badge className={getDifficultyColor(test.difficulty)}>
-                      {test.difficulty}
-                    </Badge>
+        {sessionStatus !== 'idle' && questions.length > 0 && (
+          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+            <Card className="col-span-1">
+              <CardHeader className="flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Target className="size-4 text-primary" />
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </div>
+                <CardTitle className="text-lg sm:text-xl">{activeQuestion?.prompt}</CardTitle>
+                <CardDescription className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <Badge variant="outline">{TOPIC_META[selectedTopic].label}</Badge>
+                  <Badge variant="outline">{DIFFICULTY_META[selectedDifficulty].label}</Badge>
+                  <Badge variant="outline">{activeQuestion?.estimatedTime ?? 3} min</Badge>
+                </CardDescription>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Answer progress</span>
+                    <span>{answerProgress}%</span>
                   </div>
+                  <Progress value={answerProgress} className="h-2" />
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-6">
+                {activeQuestion?.answerType === 'single-choice' && (
+                  <RadioGroup
+                    value={typeof answers[activeQuestion.id] === 'string' ? (answers[activeQuestion.id] as string) : ''}
+                    onValueChange={(value) => handleRadioAnswer(activeQuestion.id, value)}
+                    className="flex flex-col gap-3"
+                  >
+                    {activeQuestion.options?.map((option) => (
+                      <Label
+                        key={option}
+                        htmlFor={`${activeQuestion.id}-${option}`}
+                        className={cn(
+                          'group flex cursor-pointer items-center gap-3 rounded-2xl border p-4 text-sm transition hover:border-primary/60 hover:shadow-md',
+                          answers[activeQuestion.id] === option && 'border-primary bg-primary/5 shadow-md'
+                        )}
+                      >
+                        <RadioGroupItem
+                          id={`${activeQuestion.id}-${option}`}
+                          value={option}
+                          className="border-primary"
+                        />
+                        <span className="text-sm text-card-foreground">{option}</span>
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                )}
 
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {test.topics.map((topic, index) => (
-                      <Badge key={index} variant="outline" className="text-xs">
-                        {topic}
-                      </Badge>
+                {activeQuestion?.answerType === 'multiple-choice' && (
+                  <div className="flex flex-col gap-3">
+                    {activeQuestion.options?.map((option) => {
+                      const selected = Array.isArray(answers[activeQuestion.id]) && (answers[activeQuestion.id] as string[]).includes(option);
+                      return (
+                        <Label
+                          key={option}
+                          htmlFor={`${activeQuestion.id}-${option}`}
+                          className={cn(
+                            'group flex cursor-pointer items-center gap-3 rounded-2xl border p-4 text-sm transition hover:border-primary/60 hover:shadow-md',
+                            selected && 'border-primary bg-primary/5 shadow-md'
+                          )}
+                        >
+                          <Checkbox
+                            id={`${activeQuestion.id}-${option}`}
+                            checked={selected}
+                            onCheckedChange={(checked) => handleCheckboxAnswer(activeQuestion.id, option, checked)}
+                          />
+                          <span className="text-sm text-card-foreground">{option}</span>
+                        </Label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {activeQuestion?.answerType === 'short-text' && (
+                  <Textarea
+                    value={typeof answers[activeQuestion.id] === 'string' ? (answers[activeQuestion.id] as string) : ''}
+                    onChange={(event) => handleTextAnswer(activeQuestion.id, event.target.value)}
+                    placeholder="Outline your answer here…"
+                    className="min-h-[120px]"
+                  />
+                )}
+
+                {activeQuestion?.tags?.length ? (
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {activeQuestion.tags.map((tag) => (
+                      <Badge key={tag} variant="outline">{tag}</Badge>
                     ))}
                   </div>
+                ) : null}
+              </CardContent>
+              <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock className="size-4" />
+                  Aim to reason aloud and commit to an answer before checking solutions.
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentQuestionIndex((index) => Math.max(0, index - 1))}
+                    disabled={currentQuestionIndex === 0}
+                    className="gap-2"
+                  >
+                    <ChevronLeft className="size-4" />
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentQuestionIndex((index) => Math.min(questions.length - 1, index + 1))}
+                    disabled={currentQuestionIndex === questions.length - 1}
+                    className="gap-2"
+                  >
+                    Next
+                    <ChevronRight className="size-4" />
+                  </Button>
+                  <Button onClick={handleSubmitSession} disabled={isSubmitting || sessionStatus === 'completed'} className="gap-2">
+                    {isSubmitting ? (
+                      <>
+                        <Spinner className="size-4" />
+                        Submitting…
+                      </>
+                    ) : (
+                      <>
+                        Submit answers
+                        <ArrowRight className="size-4" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardFooter>
+            </Card>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <span>{test.duration} min</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4" />
-                      <span>{test.questions} questions</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      <span>{test.completed.toLocaleString()} completed</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                      <span>{test.rating}</span>
-                    </div>
+            <div className="flex flex-col gap-6">
+              <Card className="h-fit">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Sparkles className="size-4 text-primary" />
+                    Session snapshot
+                  </CardTitle>
+                  <CardDescription>
+                    Stay aware of your momentum as you progress.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted-foreground">Topic</span>
+                    <span className="font-medium text-card-foreground">{topicMeta.label}</span>
                   </div>
+                  <div className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted-foreground">Difficulty</span>
+                    <span className="font-medium text-card-foreground">{difficultyMeta.label}</span>
+                  </div>
+                  <div className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted-foreground">Questions</span>
+                    <span className="font-medium text-card-foreground">{questions.length}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex flex-col gap-2 text-sm">
+                    <span className="text-muted-foreground">Answered</span>
+                    <Progress value={answerProgress} className="h-1.5" />
+                    <span className="text-xs text-muted-foreground">{answerProgress}% of questions have a draft answer.</span>
+                  </div>
+                </CardContent>
+              </Card>
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-600">
-                      <span className="font-medium">{test.company}</span>
+              {evaluation && (
+                <Card className="border-primary/40 bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Trophy className="size-5 text-primary" />
+                      Session complete
+                    </CardTitle>
+                    <CardDescription>Your personalised feedback is ready.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-semibold text-card-foreground">{evaluation.score}</span>
+                      <span className="text-sm uppercase tracking-wide text-muted-foreground">Score</span>
                     </div>
-                    <Button className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-white">
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Test
-                    </Button>
-                  </div>
+                    <div className="flex flex-col gap-2 text-sm">
+                      <span className="text-muted-foreground">Accuracy</span>
+                      <Progress value={evaluation.accuracy * 100} className="h-1.5" />
+                      <span className="text-xs text-muted-foreground">{percentage(evaluation.accuracy)} of responses matched the expected answer.</span>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    <Badge variant="outline">{topicMeta.label}</Badge>
+                    <Badge variant="outline">{difficultyMeta.label}</Badge>
+                  </CardFooter>
                 </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Empty State */}
-        {filteredTests.length === 0 && (
-          <Card className="p-12 text-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Search className="w-8 h-8 text-gray-400" />
+              )}
             </div>
-            <h3 className="text-xl font-semibold mb-2">No tests found</h3>
-            <p className="text-gray-600 mb-4">Try adjusting your search criteria or filters</p>
-            <Button onClick={() => {
-              setSearchQuery("");
-              setSelectedCategory("all");
-              setSelectedDifficulty("all");
-            }}>
-              Clear Filters
-            </Button>
-          </Card>
+          </div>
+        )}
+
+        {evaluation && (
+          <div className="flex flex-col gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg sm:text-xl">AI feedback centre</CardTitle>
+                <CardDescription>
+                  Key takeaways from this session. Use them to tailor your next practice sprint.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6 md:grid-cols-2">
+                {renderSummaryColumn('Strengths', evaluation.summary, 'strengths', 'text-emerald-600')}
+                {renderSummaryColumn('Opportunities', evaluation.summary, 'weaknesses', 'text-rose-600')}
+                {renderSummaryColumn('Improvements', evaluation.summary, 'improvements', 'text-primary')}
+                {renderSummaryColumn('Next actions', evaluation.summary, 'suggestions', 'text-slate-600')}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg sm:text-xl">Question review</CardTitle>
+                <CardDescription>
+                  Compare your responses against model solutions and revisit explanations where needed.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {evaluation.results
+                  .sort((a, b) => a.order - b.order)
+                  .map((result) => {
+                    const isCorrect = result.isCorrect;
+                    return (
+                      <div
+                        key={result.questionId}
+                        className={cn(
+                          'flex flex-col gap-4 rounded-2xl border p-4 transition hover:shadow-md',
+                          isCorrect ? 'border-emerald-200 bg-emerald-50/40' : 'border-rose-200 bg-rose-50/40'
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-sm font-medium text-card-foreground">
+                            {isCorrect ? (
+                              <CheckCircle2 className="size-4 text-emerald-600" />
+                            ) : (
+                              <XCircle className="size-4 text-rose-600" />
+                            )}
+                            Question {result.order + 1}
+                          </div>
+                          <Badge variant="outline">
+                            {isCorrect ? 'Correct' : 'Review'}
+                          </Badge>
+                        </div>
+                        <div className="text-sm font-medium text-card-foreground">{result.prompt}</div>
+                        <div className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs uppercase tracking-wide">Your answer</span>
+                            <span className="font-medium text-card-foreground">{formatAnswer(result.userAnswer, result.answerType)}</span>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs uppercase tracking-wide">Expected answer</span>
+                            <span className="font-medium text-card-foreground">{formatAnswer(result.correctAnswer, result.answerType)}</span>
+                          </div>
+                        </div>
+                        <div className="text-sm leading-relaxed text-muted-foreground">
+                          {result.explanation}
+                        </div>
+                        {result.tags?.length ? (
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {result.tags.map((tag) => (
+                              <Badge key={tag} variant="secondary">{tag}</Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </AppShell>
+  );
+}
+
+function renderSummaryColumn(
+  title: string,
+  summary: PracticeSummary,
+  key: keyof PracticeSummary,
+  accentClass: string
+) {
+  const list = summary[key];
+
+  if (!list?.length) {
+    return (
+      <div className="flex flex-col gap-2 rounded-2xl border bg-muted/30 p-4">
+        <span className="text-sm font-semibold text-card-foreground">{title}</span>
+        <span className="text-xs text-muted-foreground">No notes available yet.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border bg-muted/30 p-4">
+      <span className="text-sm font-semibold text-card-foreground">{title}</span>
+      <ul className="flex list-disc flex-col gap-2 pl-4 text-sm">
+        {list.map((item, index) => (
+          <li key={index} className={cn('leading-relaxed', accentClass)}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

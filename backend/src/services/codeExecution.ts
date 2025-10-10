@@ -11,6 +11,7 @@ export interface ExecutionResult {
   memory?: number;
   testCasesPassed?: number;
   totalTestCases?: number;
+  testDetails?: Array<{ index: number; input: string; expected: string; actual: string; passed: boolean }>;
 }
 
 export class CodeExecutionService {
@@ -85,13 +86,14 @@ export class CodeExecutionService {
         
         // Check if it's test results
         if (lines[0] === 'TEST_RESULTS') {
-          const testResults = JSON.parse(lines[1]);
+          const testResults = JSON.parse(lines.slice(1).join('\n'));
           return {
             success: true,
             output: testResults.output,
             runtime,
             testCasesPassed: testResults.passed,
-            totalTestCases: testResults.total
+            totalTestCases: testResults.total,
+            testDetails: testResults.tests
           };
         }
 
@@ -132,13 +134,14 @@ export class CodeExecutionService {
         const lines = output.split('\n');
         
         if (lines[0] === 'TEST_RESULTS') {
-          const testResults = JSON.parse(lines[1]);
+          const testResults = JSON.parse(lines.slice(1).join('\n'));
           return {
             success: true,
             output: testResults.output,
             runtime,
             testCasesPassed: testResults.passed,
-            totalTestCases: testResults.total
+            totalTestCases: testResults.total,
+            testDetails: testResults.tests
           };
         }
 
@@ -164,34 +167,74 @@ export class CodeExecutionService {
    */
   private async executeJava(code: string, testCases?: Array<{ input: string; expectedOutput: string }>): Promise<ExecutionResult> {
     const startTime = Date.now();
-    const className = `Solution_${Date.now()}`;
-    const fileName = `${className}.java`;
+    // Try to detect the public class name; default to Solution
+    const match = code.match(/public\s+class\s+(\w+)/);
+    const detectedClass = match?.[1] || 'Solution';
+    const fileName = `${detectedClass}.java`;
     const filePath = join(this.tempDir, fileName);
 
     try {
-      const wrappedCode = this.wrapJavaCode(code, className, testCases);
-      writeFileSync(filePath, wrappedCode);
+      writeFileSync(filePath, code);
 
-      // Compile Java code
-      const compileResult = await this.runCommand('javac', [filePath]);
-      if (!compileResult.success) {
-        return {
-          success: false,
-          error: compileResult.error,
-          runtime: Date.now() - startTime
-        };
+      // If test cases provided, create a reflection-based runner
+      let runnerClass = '';
+      let runnerPath = '';
+      if (testCases && testCases.length > 0) {
+        const escapeJava = (s: string) => s.replace(/\\/g, "\\\\").replace(/\"/g, "\\\"").replace(/\n/g, "\\n");
+        const pairs = testCases
+          .map(tc => `{"${escapeJava(String(tc.input))}","${escapeJava(String(tc.expectedOutput))}"}`)
+          .join(',\n      ');
+        runnerClass = `
+import java.lang.reflect.*;
+public class MainRunner {
+  public static void main(String[] args) {
+    int passed = 0; StringBuilder out = new StringBuilder();
+    String[][] tests = new String[][]{
+      ${pairs}
+    };
+    try {
+      Class<?> cls = Class.forName("${detectedClass}");
+      Method m = cls.getMethod("solution", String.class);
+      for (int i = 0; i < tests.length; i++) {
+        String input = tests[i][0];
+        String expected = tests[i][1];
+        Object res = m.invoke(null, input);
+        String actual = String.valueOf(res);
+        boolean ok = actual.equals(expected);
+        if (ok) passed++;
+        out.append("Test ").append(i+1).append(": ").append(ok ? "PASS" : "FAIL").append("\\n");
+      }
+      System.out.println("TEST_RESULTS");
+      System.out.println("{\\"passed\\":"+passed+",\\"total\\":"+tests.length+",\\"output\\":\\""+out.toString().replace("\\\\", "\\\\\\").replace("\\\"", "\\\\\\\"").replace("\n", "\\n")+"\\"}");
+    } catch (Throwable t) {
+      System.out.println("TEST_RESULTS");
+      String msg = t.toString().replace("\\\\", "\\\\\\").replace("\\\"", "\\\\\\\"").replace("\n", "\\n");
+      System.out.println("{\\"passed\\":0,\\"total\\":0,\\"output\\":\\""+msg+"\\"}");
+    }
+  }
+}
+`;
+        runnerPath = join(this.tempDir, 'MainRunner.java');
+        writeFileSync(runnerPath, runnerClass);
       }
 
-      // Run Java code
-      const runResult = await this.runCommand('java', ['-cp', this.tempDir, className]);
+      // Compile (user file + runner if present)
+      const compileArgs = runnerPath ? [filePath, runnerPath] : [filePath];
+      const compileResult = await this.runCommand('javac', compileArgs);
+      if (!compileResult.success) {
+        return { success: false, error: compileResult.error, runtime: Date.now() - startTime };
+      }
+
+      // Run runner if present, else run user's main class
+      const runClass = runnerPath ? 'MainRunner' : detectedClass;
+      const runResult = await this.runCommand('java', ['-cp', this.tempDir, runClass]);
       const runtime = Date.now() - startTime;
 
       if (runResult.success) {
         const output = runResult.output.trim();
         const lines = output.split('\n');
-        
         if (lines[0] === 'TEST_RESULTS') {
-          const testResults = JSON.parse(lines[1]);
+          const testResults = JSON.parse(lines.slice(1).join('\n'));
           return {
             success: true,
             output: testResults.output,
@@ -200,22 +243,15 @@ export class CodeExecutionService {
             totalTestCases: testResults.total
           };
         }
-
-        return {
-          success: true,
-          output: runResult.output,
-          runtime
-        };
-      } else {
-        return {
-          success: false,
-          error: runResult.error,
-          runtime
-        };
+        return { success: true, output: runResult.output, runtime };
       }
+      return { success: false, error: runResult.error, runtime };
     } finally {
+      // Best-effort cleanup: .java and potential .class
       this.cleanupFile(filePath);
-      this.cleanupFile(join(this.tempDir, `${className}.class`));
+      this.cleanupFile(join(this.tempDir, `${detectedClass}.class`));
+      this.cleanupFile(join(this.tempDir, 'MainRunner.java'));
+      this.cleanupFile(join(this.tempDir, 'MainRunner.class'));
     }
   }
 
@@ -515,23 +551,26 @@ ${code}
 const testCases = ${JSON.stringify(testCases)};
 let passed = 0;
 let output = '';
+let tests = [];
 
 try {
   for (let i = 0; i < testCases.length; i++) {
     const testCase = testCases[i];
     const result = solution(testCase.input);
-    if (result === testCase.expectedOutput) {
-      passed++;
-    }
-    output += \`Test \${i + 1}: \${result === testCase.expectedOutput ? 'PASS' : 'FAIL'}\\n\`;
+    const expected = String(testCase.expectedOutput);
+    const actual = String(result);
+    const ok = actual === expected;
+    if (ok) passed++;
+    output += \`Test \${i + 1}: \${ok ? 'PASS' : 'FAIL'}\\n\`;
+    tests.push({ index: i + 1, input: String(testCase.input), expected, actual, passed: ok });
   }
   
   console.log('TEST_RESULTS');
-  console.log(JSON.stringify({ passed, total: testCases.length, output }));
+  console.log(JSON.stringify({ passed, total: testCases.length, output, tests }));
 } catch (error) {
   console.error('Test execution error:', error.message);
   console.log('TEST_RESULTS');
-  console.log(JSON.stringify({ passed: 0, total: testCases.length, output: error.message }));
+  console.log(JSON.stringify({ passed: 0, total: testCases.length, output: String(error.message), tests: [] }));
 }
 `;
   }

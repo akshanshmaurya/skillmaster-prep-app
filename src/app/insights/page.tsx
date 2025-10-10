@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,14 +41,83 @@ import {
   AreaChart,
   ComposedChart
 } from "recharts";
+import { testsApi } from "@/lib/api/tests";
+
+type HistoryEntry = Awaited<ReturnType<typeof testsApi.getHistory>>["history"][number];
+const HISTORY_LIMIT = 12;
 
 export default function InsightsPage() {
   const [selectedTab, setSelectedTab] = useState("overview");
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
-  // AI-powered data
-  const overallScore = 76;
-  const learningVelocity = 12; // % improvement per week
-  const predictedScore = 85;
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHistory = async () => {
+      try {
+        const response = await testsApi.getHistory(HISTORY_LIMIT);
+        if (!isMounted) return;
+        setHistory(response.history);
+        setHistoryError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn("Unable to load assessment history for insights:", err);
+        setHistoryError(err instanceof Error ? err.message : "Unable to load assessment history.");
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const derivedHistory = useMemo(() => {
+    if (!history.length) {
+      return null;
+    }
+
+    const sortedDesc = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const sortedAsc = [...sortedDesc].reverse();
+    const latest = sortedDesc[0];
+    const previous = sortedDesc[1];
+
+    const scoreSum = sortedDesc.reduce((acc, entry) => acc + entry.score, 0);
+    const accuracySum = sortedDesc.reduce((acc, entry) => acc + entry.accuracy, 0);
+
+  const improvement = previous ? latest.score - previous.score : 0;
+  const velocity = previous ? ((latest.score - previous.score) / (previous.score || 1)) * 100 : 0;
+    const progressSeries = sortedAsc.map((entry, index) => ({
+      week: new Date(entry.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+      score: Math.round(entry.score),
+      testsTaken: index + 1,
+      hoursStudied: Math.max(6, Math.round(entry.accuracy * 20))
+    }));
+
+    return {
+      latestScore: Math.round(latest.score),
+      averageScore: scoreSum / sortedDesc.length,
+      averageAccuracy: accuracySum / sortedDesc.length,
+  improvement,
+  velocity,
+      sortedDesc,
+      progressSeries
+    };
+  }, [history]);
+
+  const overallScore = derivedHistory?.latestScore ?? 76;
+  const learningVelocity = derivedHistory ? Math.round(derivedHistory.velocity) : 12;
+  const predictedScore = derivedHistory ? Math.min(100, Math.round(derivedHistory.averageScore + Math.max(0, derivedHistory.improvement * 1.5))) : 85;
+  const improvementDelta = derivedHistory ? Math.round(derivedHistory.improvement) : 8;
+  const velocityIsPositive = learningVelocity >= 0;
+  const velocityTextClass = velocityIsPositive ? "text-[#00CC66]" : "text-red-500";
 
   const skillsData = [
     { skill: "Data Structures", current: 85, target: 95, industry: 80 },
@@ -102,7 +171,7 @@ export default function InsightsPage() {
     }
   ];
 
-  const progressHistory = [
+  const fallbackProgressHistory = [
     { week: "Week 1", score: 58, testsTaken: 2, hoursStudied: 8 },
     { week: "Week 2", score: 62, testsTaken: 3, hoursStudied: 12 },
     { week: "Week 3", score: 65, testsTaken: 4, hoursStudied: 15 },
@@ -110,6 +179,10 @@ export default function InsightsPage() {
     { week: "Week 5", score: 73, testsTaken: 4, hoursStudied: 14 },
     { week: "Week 6", score: 76, testsTaken: 6, hoursStudied: 20 },
   ];
+
+  const progressHistory = derivedHistory?.progressSeries ?? fallbackProgressHistory;
+
+  const recentAssessments = useMemo(() => derivedHistory?.sortedDesc.slice(0, 5) ?? [], [derivedHistory]);
 
   const topicMastery = [
     { topic: "Arrays & Strings", mastery: 92, questions: 45, timeSpent: 12 },
@@ -217,9 +290,15 @@ export default function InsightsPage() {
               <Trophy className="w-5 h-5 text-yellow-500" />
             </div>
             <div className="text-3xl font-bold mb-1">{overallScore}%</div>
-            <div className="flex items-center gap-1 text-sm text-[#00CC66]">
-              <TrendingUp className="w-4 h-4" />
-              <span>+8% this week</span>
+            <div
+              className={`flex items-center gap-1 text-sm ${improvementDelta >= 0 ? "text-[#00CC66]" : "text-red-500"}`}
+            >
+              {improvementDelta >= 0 ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <TrendingDown className="w-4 h-4" />
+              )}
+              <span>{improvementDelta >= 0 ? "+" : "-"}{Math.abs(improvementDelta)} pts vs last session</span>
             </div>
           </Card>
 
@@ -228,8 +307,10 @@ export default function InsightsPage() {
               <span className="text-sm text-muted-foreground">Learning Velocity</span>
               <Zap className="w-5 h-5 text-[#6633FF]" />
             </div>
-            <div className="text-3xl font-bold mb-1">{learningVelocity}%</div>
-            <p className="text-xs text-muted-foreground">Improvement per week</p>
+            <div className={`text-3xl font-bold mb-1 ${velocityTextClass}`}>
+              {`${velocityIsPositive ? "+" : "-"}${Math.abs(learningVelocity)}%`}
+            </div>
+            <p className="text-xs text-muted-foreground">Change vs previous session</p>
           </Card>
 
           <Card className="p-6">
@@ -310,6 +391,61 @@ export default function InsightsPage() {
                 </ResponsiveContainer>
               </Card>
             </div>
+
+            {/* Recent Assessments */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-lg">Recent Assessments</h3>
+                  <p className="text-sm text-muted-foreground">Live scores from your latest practice sessions.</p>
+                </div>
+                {historyLoading ? (
+                  <Badge variant="outline" className="text-xs">Loading…</Badge>
+                ) : null}
+              </div>
+              {historyError ? (
+                <div className="rounded-lg border border-dashed border-red-200 bg-red-500/5 p-4 text-sm text-red-500">
+                  {historyError}
+                </div>
+              ) : historyLoading ? (
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <Progress value={35} className="h-2 w-32" />
+                  Syncing insights…
+                </div>
+              ) : recentAssessments.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  Complete an assessment in the Tests hub to unlock personalized insights here.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {recentAssessments.map((entry) => (
+                    <div key={entry.sessionId} className="rounded-xl border border-border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary" className="capitalize">{entry.topic.replace("-", " ")}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(entry.createdAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-end justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Score</p>
+                          <p className="text-2xl font-semibold">{Math.round(entry.score)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Accuracy</p>
+                          <p className="text-lg font-semibold">{Math.round(entry.accuracy * 100)}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
 
             {/* AI Insights Cards */}
             <div className="grid grid-cols-2 gap-4">

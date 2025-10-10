@@ -135,7 +135,7 @@ export default function CodeEditor({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-hidden">
       {/* Editor Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -194,7 +194,7 @@ export default function CodeEditor({
       {/* Monaco Editor */}
       <Card className="overflow-hidden">
         <Editor
-          height="400px"
+          height="320px"
           language={language}
           value={code}
           onChange={handleCodeChange}
@@ -224,7 +224,7 @@ export default function CodeEditor({
 
       {/* Execution Result */}
       {executionResult && (
-        <Card className="p-4">
+        <Card className="p-4 max-h-64 overflow-auto">
           <div className="flex items-center justify-between mb-3">
             <h4 className="font-semibold text-sm">Execution Result</h4>
             <Badge 
@@ -259,6 +259,40 @@ export default function CodeEditor({
                   </span>
                 )}
               </div>
+
+              {Array.isArray((executionResult as any).testDetails) && (executionResult as any).testDetails.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Per-test results:</p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-muted-foreground">
+                        <tr>
+                          <th className="text-left p-1">#</th>
+                          <th className="text-left p-1">Input</th>
+                          <th className="text-left p-1">Expected</th>
+                          <th className="text-left p-1">Actual</th>
+                          <th className="text-left p-1">Result</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(executionResult as any).testDetails.map((t: any) => (
+                          <tr key={t.index} className="border-t">
+                            <td className="p-1">{t.index}</td>
+                            <td className="p-1 font-mono">{t.input}</td>
+                            <td className="p-1 font-mono">{t.expected}</td>
+                            <td className="p-1 font-mono">{t.actual}</td>
+                            <td className="p-1">
+                              <Badge variant={t.passed ? 'default' : 'destructive'} className="text-[10px]">
+                                {t.passed ? 'PASS' : 'FAIL'}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div>

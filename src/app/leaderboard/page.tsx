@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -27,6 +28,10 @@ import {
   Users,
   Filter
 } from "lucide-react";
+import { testsApi } from "@/lib/api/tests";
+
+type HistoryEntry = Awaited<ReturnType<typeof testsApi.getHistory>>["history"][number];
+const HISTORY_LIMIT = 12;
 
 interface LeaderboardEntry {
   rank: number;
@@ -43,6 +48,72 @@ export default function LeaderboardPage() {
   const [timeframe, setTimeframe] = useState("weekly");
   const [category, setCategory] = useState("overall");
   const [selectedTab, setSelectedTab] = useState("global");
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHistory = async () => {
+      try {
+        const response = await testsApi.getHistory(HISTORY_LIMIT);
+        if (!isMounted) return;
+        setHistory(response.history);
+        setHistoryError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn("Unable to load leaderboard history:", err);
+        setHistoryError(err instanceof Error ? err.message : "Unable to load recent assessments.");
+      } finally {
+        if (isMounted) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const personalStats = useMemo(() => {
+    if (!history.length) {
+      return null;
+    }
+
+    const sortedDesc = [...history].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const latest = sortedDesc[0];
+    const totalTests = sortedDesc.length;
+    const bestScore = sortedDesc.reduce((max, entry) => Math.max(max, entry.score), 0);
+    const averageScore = sortedDesc.reduce((sum, entry) => sum + entry.score, 0) / totalTests;
+    const averageAccuracy = sortedDesc.reduce((sum, entry) => sum + entry.accuracy, 0) / totalTests;
+
+    return {
+      latest,
+      totalTests,
+      bestScore,
+      averageScore,
+      averageAccuracy
+    };
+  }, [history]);
+
+  const recentAssessments = useMemo(() => {
+    if (!history.length) {
+      return [] as HistoryEntry[];
+    }
+    return [...history]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5);
+  }, [history]);
+
+  const latestScoreDisplay = personalStats ? Math.round(personalStats.latest.score) : 82;
+  const averageScoreDisplay = personalStats ? Math.round(personalStats.averageScore) : 78;
+  const averageAccuracyDisplay = personalStats ? Math.round(personalStats.averageAccuracy * 100) : 78;
+  const bestScoreDisplay = personalStats ? Math.round(personalStats.bestScore) : 92;
+  const totalTestsCompleted = personalStats?.totalTests ?? 12;
 
   const currentUserRank = 127;
 
@@ -220,9 +291,10 @@ export default function LeaderboardPage() {
                   </Avatar>
                   <div>
                     <h3 className="font-semibold text-lg">Alex Kumar (You)</h3>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">Score: 1685</Badge>
-                      <Badge variant="outline">Accuracy: 78%</Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">Avg score: {averageScoreDisplay}</Badge>
+                      <Badge variant="outline">Avg accuracy: {averageAccuracyDisplay}%</Badge>
+                      <Badge variant="secondary">Sessions: {totalTestsCompleted}</Badge>
                     </div>
                   </div>
                 </div>
@@ -231,9 +303,9 @@ export default function LeaderboardPage() {
             <div className="text-right">
               <div className="flex items-center gap-2 text-[#00CC66] mb-1">
                 <TrendingUp className="w-5 h-5" />
-                <span className="font-semibold">+12 positions</span>
+                <span className="font-semibold">Best: {bestScoreDisplay}</span>
               </div>
-              <p className="text-sm text-muted-foreground">↑ from last week</p>
+              <p className="text-sm text-muted-foreground">Latest score {latestScoreDisplay}</p>
               <Button className="mt-3">
                 <Zap className="w-4 h-4 mr-2" />
                 Boost Your Rank
@@ -261,6 +333,60 @@ export default function LeaderboardPage() {
 
           {/* Global Leaderboard */}
           <TabsContent value="global" className="space-y-6">
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-lg">Your recent assessments</h3>
+                  <p className="text-sm text-muted-foreground">Latest sessions feeding your leaderboard position.</p>
+                </div>
+                {historyLoading ? (
+                  <Badge variant="outline" className="text-xs">Syncing…</Badge>
+                ) : null}
+              </div>
+              {historyError ? (
+                <div className="rounded-lg border border-dashed border-red-200 bg-red-500/5 p-4 text-sm text-red-500">
+                  {historyError}
+                </div>
+              ) : historyLoading ? (
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <Progress value={45} className="h-2 w-32" />
+                  Calculating momentum…
+                </div>
+              ) : recentAssessments.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  No scored assessments yet. Launch one from the Tests tab to join the leaderboard.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {recentAssessments.map((entry) => (
+                    <div key={entry.sessionId} className="rounded-xl border border-border bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary" className="capitalize">{entry.topic.replace("-", " ")}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(entry.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit"
+                          })}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-end justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Score</p>
+                          <p className="text-2xl font-semibold">{Math.round(entry.score)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Accuracy</p>
+                          <p className="text-lg font-semibold">{Math.round(entry.accuracy * 100)}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
             {/* Top 3 Podium */}
             <div className="grid grid-cols-3 gap-4 mb-8">
               {topPerformers.map((performer) => (

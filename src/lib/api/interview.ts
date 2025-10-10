@@ -101,10 +101,14 @@ export const interviewSessionApi = {
 
   // Start interview session
   startSession: async (sessionId: string) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const response = await fetch(`${API_BASE_URL}/interview/sessions/${sessionId}/start`, {
       method: 'POST',
       headers: getAuthHeaders(),
+      signal: controller.signal as any,
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       throw new Error('Failed to start session');
@@ -119,9 +123,25 @@ export const interviewSessionApi = {
       method: 'POST',
       headers: getAuthHeaders(),
     });
+    const text = await response.text();
+    let json: any = null;
+    try { json = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok) {
+      const serverMsg = json?.error || json?.message;
+      throw new Error(serverMsg || `Failed to complete session (${response.status})`);
+    }
+    return json;
+  },
+
+  // Get session results with evaluations
+  getResults: async (sessionId: string) => {
+    const response = await fetch(`${API_BASE_URL}/interview/sessions/${sessionId}/results`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
 
     if (!response.ok) {
-      throw new Error('Failed to complete session');
+      throw new Error('Failed to get interview results');
     }
 
     return response.json();

@@ -13,13 +13,13 @@ export class ScoringService {
     timeSpent: number = 0,
     hintsUsed: number = 0
   ): QuestionEvaluation {
-    // Base scores (will be adjusted based on response quality)
+    // Base scores with higher emphasis on approach/optimality (efficiency/clarity)
     let scores = {
-      correctness: 0,
-      efficiency: 0,
-      clarity: 0,
-      communication: 0,
-      edgeCases: 0
+      correctness: 0,   // 0-25 (from tests or reasoned correctness)
+      efficiency: 0,    // 0-25 (algorithmic optimality/Big-O and tradeoffs)
+      clarity: 0,       // 0-20 (explanation quality)
+      communication: 0, // 0-15 (interview communication)
+      edgeCases: 0      // 0-15 (consideration of edge cases)
     };
 
     let feedback = {
@@ -29,45 +29,48 @@ export class ScoringService {
       suggestions: [] as string[]
     };
 
-    // Evaluate correctness based on execution results
+    // Evaluate correctness: tests inform but do not dominate
     if (executionResult) {
       const passed = executionResult.testCasesPassed || 0;
       const total = executionResult.totalTestCases || 0;
       if (executionResult.success) {
-        // Require at least 5 tests and passing >= 5 to be considered cleared
-        const cleared = total >= 5 && passed >= 5;
-        scores.correctness = cleared ? 40 : Math.min(35, 20 + (passed / Math.max(1, total)) * 15);
-        if (cleared) {
-          feedback.strengths.push('All required tests passed (including edge cases)');
+        const ratio = total > 0 ? passed / total : 0;
+        // Cap correctness at 25, scaled by pass ratio
+        scores.correctness = Math.round(10 + ratio * 15);
+        if (ratio === 1) {
+          feedback.strengths.push('All provided tests passed');
+        } else if (ratio >= 0.6) {
+          feedback.strengths.push('Most tests passed');
+          feedback.improvements.push('Address remaining failing cases');
         } else {
-          feedback.weaknesses.push('Did not pass all required tests');
-          feedback.improvements.push('Handle edge cases and ensure all tests pass');
+          feedback.weaknesses.push('Limited test pass rate');
+          feedback.improvements.push('Revisit logic to improve correctness');
         }
       } else {
-        scores.correctness = Math.max(0, 15 - (executionResult.error ? 10 : 5));
+        scores.correctness = 5;
         feedback.weaknesses.push('Code has execution errors');
-        feedback.improvements.push('Debug and fix compilation/runtime errors');
+        feedback.improvements.push('Fix compilation/runtime errors and re-run tests');
       }
     } else {
       // For non-coding questions, evaluate based on response content
-      scores.correctness = this.evaluateResponseCorrectness(response);
+      scores.correctness = Math.min(25, this.evaluateResponseCorrectness(response));
     }
 
-    // Evaluate efficiency (time and space complexity)
+    // Evaluate efficiency (time/space complexity, optimal approach)
     if (code) {
-      scores.efficiency = this.evaluateCodeEfficiency(code, language);
+      scores.efficiency = Math.min(25, this.evaluateCodeEfficiency(code, language) + (executionResult?.testDetails?.length ? 5 : 0));
     } else {
-      scores.efficiency = this.evaluateResponseEfficiency(response);
+      scores.efficiency = Math.min(25, this.evaluateResponseEfficiency(response));
     }
 
     // Evaluate clarity of explanation
-    scores.clarity = this.evaluateClarity(response);
+    scores.clarity = Math.min(20, this.evaluateClarity(response));
 
     // Evaluate communication skills
-    scores.communication = this.evaluateCommunication(response);
+    scores.communication = Math.min(15, this.evaluateCommunication(response));
 
     // Evaluate edge case handling
-    scores.edgeCases = this.evaluateEdgeCaseHandling(response, code);
+    scores.edgeCases = Math.min(15, this.evaluateEdgeCaseHandling(response, code));
 
     // Calculate total score
     const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
@@ -315,7 +318,7 @@ export class ScoringService {
   private static generateFeedback(scores: any, feedback: any, timeSpent: number, hintsUsed: number): void {
     // Strengths
     if (scores.correctness >= 35) feedback.strengths.push('Strong problem-solving skills');
-    if (scores.efficiency >= 15) feedback.strengths.push('Good algorithmic thinking');
+    if (scores.efficiency >= 18) feedback.strengths.push('Strong algorithmic/optimal approach');
     if (scores.clarity >= 15) feedback.strengths.push('Clear communication');
     if (scores.communication >= 8) feedback.strengths.push('Good interpersonal skills');
     if (scores.edgeCases >= 8) feedback.strengths.push('Thorough consideration of edge cases');

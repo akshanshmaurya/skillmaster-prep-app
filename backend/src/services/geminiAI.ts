@@ -1,4 +1,17 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  PracticeTopic,
+  PracticeDifficulty,
+  PracticeAnswerType,
+  PracticeAIResponse
+} from '../models/Practice';
+import {
+  AssessmentTrack,
+  AssessmentTopic as AssessmentTopicType,
+  AssessmentDifficulty as AssessmentDifficultyType,
+  AssessmentAnswerType,
+  AssessmentSummary
+} from '../models/Assessment';
 
 export class GeminiAIService {
   private genAI: GoogleGenerativeAI;
@@ -231,6 +244,364 @@ Rules:
           timeLimit: 30
         };
       });
+    }
+  }
+
+  async generatePracticeQuestions(
+    context: {
+      topic: PracticeTopic;
+      difficulty: PracticeDifficulty;
+      count: number;
+      preferredAnswerType?: PracticeAnswerType;
+    }
+  ): Promise<Array<{
+    id: string;
+    prompt: string;
+    answerType: PracticeAnswerType;
+    options?: string[];
+    correctAnswer: string | string[];
+    explanation: string;
+    tags: string[];
+    estimatedTime: number;
+  }>> {
+    const topicLabels: Record<PracticeTopic, string> = {
+      quant: 'quantitative aptitude',
+      verbal: 'verbal ability',
+      aptitude: 'logical aptitude',
+      reasoning: 'analytical reasoning',
+      games: 'brain-teaser game challenges'
+    };
+
+    const difficultyLabels: Record<PracticeDifficulty, string> = {
+      beginner: 'beginner',
+      intermediate: 'intermediate',
+      advanced: 'advanced'
+    };
+
+    const preferred = context.preferredAnswerType || 'single-choice';
+    const prompt = `You are an elite interview coach. Create ${context.count} ${difficultyLabels[context.difficulty]}-level ${topicLabels[context.topic]} practice questions for job interview preparation.
+
+Return JSON only (no prose) representing an array. Each object must include:
+- id (string)
+- prompt (string concise question text)
+- answerType ("single-choice" | "multiple-choice" | "short-text")
+- options (array of 4 concise strings when answerType is choice-based; omit for short-text)
+- correctAnswer (string for single-choice/short-text; array of strings for multiple-choice with exact option text)
+- explanation (<=2 sentences explaining why the answer is correct and common traps)
+- tags (array of 2-4 thematic keywords)
+- estimatedTime (integer minutes between 1 and 5)
+
+Prioritise ${preferred} format unless another is clearly superior. Vary sub-topics within ${topicLabels[context.topic]}. Avoid numbering questions or adding commentary.`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        throw new Error('Gemini practice questions: invalid format');
+      }
+
+      const timestamp = Date.now();
+      return parsed.slice(0, context.count).map((item: any, index: number) => {
+        const answerType = (item.answerType as PracticeAnswerType) || preferred;
+        const normalizedOptions = Array.isArray(item.options)
+          ? item.options.map((opt: any) => String(opt))
+          : undefined;
+        const normalizedAnswer = answerType === 'multiple-choice'
+          ? (Array.isArray(item.correctAnswer)
+              ? item.correctAnswer.map((ans: any) => String(ans))
+              : normalizedOptions?.filter(opt => opt === String(item.correctAnswer)) || [])
+          : String(item.correctAnswer ?? '');
+
+        return {
+          id: String(item.id || `practice-ai-${timestamp}-${index + 1}`),
+          prompt: String(item.prompt || 'Practice question'),
+          answerType,
+          options: answerType === 'short-text' ? undefined : normalizedOptions,
+          correctAnswer: normalizedAnswer,
+          explanation: String(item.explanation || 'Review the core concept and eliminate distractors.'),
+          tags: Array.isArray(item.tags) && item.tags.length ? item.tags.map((tag: any) => String(tag)) : [topicLabels[context.topic]],
+          estimatedTime: Number.isFinite(item.estimatedTime) ? Math.max(1, Math.min(5, Number(item.estimatedTime))) : 3
+        };
+      });
+    } catch (error) {
+      console.error('Gemini AI practice question generation failed:', error);
+      throw error;
+    }
+  }
+
+  async generatePracticeFeedback(
+    context: {
+      topic: PracticeTopic;
+      difficulty: PracticeDifficulty;
+      accuracy: number;
+      results: Array<{
+        prompt: string;
+        userAnswer: string | string[];
+        correctAnswer: string | string[];
+        isCorrect: boolean;
+        explanation: string;
+      }>;
+    }
+  ): Promise<PracticeAIResponse> {
+    const topicLabels: Record<PracticeTopic, string> = {
+      quant: 'quantitative aptitude',
+      verbal: 'verbal ability',
+      aptitude: 'logical aptitude',
+      reasoning: 'analytical reasoning',
+      games: 'brain-teaser strategy'
+    };
+
+    const difficultyLabels: Record<PracticeDifficulty, string> = {
+      beginner: 'beginner',
+      intermediate: 'intermediate',
+      advanced: 'advanced'
+    };
+
+    const formattedResults = context.results
+      .map((result, idx) => {
+        const userAnswer = Array.isArray(result.userAnswer) ? result.userAnswer.join(', ') : result.userAnswer;
+        const correctAnswer = Array.isArray(result.correctAnswer) ? result.correctAnswer.join(', ') : result.correctAnswer;
+        return `Q${idx + 1}: ${result.prompt}\nChosen: ${userAnswer}\nCorrect: ${correctAnswer}\nCorrect? ${result.isCorrect ? 'Yes' : 'No'}\nExplanation: ${result.explanation}`;
+      })
+      .join('\n\n');
+
+    const prompt = `You are an encouraging AI interview mentor helping a candidate improve ${topicLabels[context.topic]} skills.
+
+Candidate difficulty level: ${difficultyLabels[context.difficulty]}
+Overall accuracy: ${(context.accuracy * 100).toFixed(1)}%
+
+Provide feedback in this exact structure with 2-3 bullets per section (max 16 words per bullet):
+
+STRENGTHS:
+- ...
+
+WEAKNESSES:
+- ...
+
+IMPROVEMENTS:
+- ...
+
+SUGGESTIONS:
+- ...
+
+Keep tone supportive and laser-focused on interview preparation. Reference concepts, not specific option letters. Avoid repeating question text.
+
+Here are the question outcomes:
+${formattedResults}`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = this.parseFeedbackResponse(text);
+
+      if (
+        parsed.strengths.length === 0 &&
+        parsed.weaknesses.length === 0 &&
+        parsed.improvements.length === 0 &&
+        parsed.suggestions.length === 0
+      ) {
+        throw new Error('Gemini practice feedback returned empty sections');
+      }
+
+      return parsed;
+    } catch (error) {
+      console.error('Gemini AI practice feedback failed:', error);
+      throw error;
+    }
+  }
+
+  async generateAssessmentQuestions(
+    context: {
+      track: AssessmentTrack;
+      topic: AssessmentTopicType;
+      difficulty: AssessmentDifficultyType;
+      count: number;
+      preferredAnswerType?: AssessmentAnswerType;
+    }
+  ): Promise<Array<{
+    id: string;
+    prompt: string;
+    answerType: AssessmentAnswerType;
+    options?: string[];
+    correctAnswer: string | string[];
+    explanation: string;
+    tags: string[];
+    estimatedTime: number;
+  }>> {
+    const trackLabels: Record<AssessmentTrack, string> = {
+      'soft-skills': 'soft skills aptitude (quantitative, verbal, logical) interviews',
+      'technical-skills': 'technical fundamentals (coding, cloud, CS core) interviews'
+    };
+
+    const topicLabels: Record<AssessmentTopicType, string> = {
+      quant: 'quantitative aptitude',
+      verbal: 'verbal ability',
+      aptitude: 'logical aptitude',
+      coding: 'coding fundamentals',
+      cloud: 'cloud computing and DevOps',
+      dbms: 'database management systems',
+      'operating-systems': 'operating systems',
+      networks: 'computer networks',
+      'system-design': 'system design'
+    };
+
+    const difficultyLabels: Record<AssessmentDifficultyType, string> = {
+      beginner: 'beginner',
+      intermediate: 'intermediate',
+      advanced: 'advanced'
+    };
+
+    const preferred = context.preferredAnswerType || 'single-choice';
+    const prompt = `You are designing a rigorous ${trackLabels[context.track]} assessment. Create ${context.count} ${difficultyLabels[context.difficulty]}-level questions targeting ${topicLabels[context.topic]} as asked in top company online tests.
+
+Return JSON only (no prose) as an array. Each object must include exactly:
+- id (string)
+- prompt (string concise question text)
+- answerType ("single-choice" | "multiple-choice" | "short-text")
+- options (array of 4 concise strings when answerType is choice-based; omit for short-text)
+- correctAnswer (string for single-choice/short-text; array of exact option strings for multiple-choice)
+- explanation (<=2 sentences highlighting reasoning and common mistakes)
+- tags (array of 2-4 keywords covering subtopics)
+- estimatedTime (integer minutes between 1 and 6)
+
+Balance conceptual understanding and applied reasoning. Avoid numbering, markdown, or commentary.`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        throw new Error('Gemini assessment questions: invalid format');
+      }
+
+      const timestamp = Date.now();
+      return parsed.slice(0, context.count).map((item: any, index: number) => {
+        const answerType = (item.answerType as AssessmentAnswerType) || preferred;
+        const normalizedOptions = Array.isArray(item.options)
+          ? item.options.map((opt: any) => String(opt))
+          : undefined;
+        const normalizedAnswer = answerType === 'multiple-choice'
+          ? (Array.isArray(item.correctAnswer)
+              ? item.correctAnswer.map((ans: any) => String(ans))
+              : normalizedOptions?.filter(opt => opt === String(item.correctAnswer)) || [])
+          : String(item.correctAnswer ?? '');
+
+        return {
+          id: String(item.id || `assessment-ai-${timestamp}-${index + 1}`),
+          prompt: String(item.prompt || 'Assessment question'),
+          answerType,
+          options: answerType === 'short-text' ? undefined : normalizedOptions,
+          correctAnswer: normalizedAnswer,
+          explanation: String(item.explanation || 'Review the concept and eliminate distractors carefully.'),
+          tags: Array.isArray(item.tags) && item.tags.length ? item.tags.map((tag: any) => String(tag)) : [topicLabels[context.topic]],
+          estimatedTime: Number.isFinite(item.estimatedTime) ? Math.max(1, Math.min(6, Number(item.estimatedTime))) : 4
+        };
+      });
+    } catch (error) {
+      console.error('Gemini AI assessment question generation failed:', error);
+      throw error;
+    }
+  }
+
+  async generateAssessmentFeedback(
+    context: {
+      track: AssessmentTrack;
+      topic: AssessmentTopicType;
+      difficulty: AssessmentDifficultyType;
+      accuracy: number;
+      results: Array<{
+        prompt: string;
+        userAnswer: string | string[];
+        correctAnswer: string | string[];
+        isCorrect: boolean;
+        explanation: string;
+      }>;
+    }
+  ): Promise<AssessmentSummary> {
+    const trackLabels: Record<AssessmentTrack, string> = {
+      'soft-skills': 'soft skills aptitude (quantitative, verbal, logical) readiness',
+      'technical-skills': 'technical fundamentals (coding, cloud, CS core) readiness'
+    };
+
+    const topicLabels: Record<AssessmentTopicType, string> = {
+      quant: 'quantitative aptitude',
+      verbal: 'verbal ability',
+      aptitude: 'logical aptitude',
+      coding: 'coding fundamentals',
+      cloud: 'cloud computing and DevOps',
+      dbms: 'database management systems',
+      'operating-systems': 'operating systems',
+      networks: 'computer networks',
+      'system-design': 'system design'
+    };
+
+    const difficultyLabels: Record<AssessmentDifficultyType, string> = {
+      beginner: 'beginner',
+      intermediate: 'intermediate',
+      advanced: 'advanced'
+    };
+
+    const formattedResults = context.results
+      .map((result, idx) => {
+        const userAnswer = Array.isArray(result.userAnswer) ? result.userAnswer.join(', ') : result.userAnswer;
+        const correctAnswer = Array.isArray(result.correctAnswer) ? result.correctAnswer.join(', ') : result.correctAnswer;
+        return `Q${idx + 1}: ${result.prompt}\nChosen: ${userAnswer}\nCorrect: ${correctAnswer}\nCorrect? ${result.isCorrect ? 'Yes' : 'No'}\nExplanation: ${result.explanation}`;
+      })
+      .join('\n\n');
+
+    const prompt = `You are an interview analytics coach summarising a ${trackLabels[context.track]} report.
+
+Candidate focus area: ${topicLabels[context.topic]}
+Difficulty: ${difficultyLabels[context.difficulty]}
+Overall accuracy: ${(context.accuracy * 100).toFixed(1)}%
+
+Provide feedback in this exact structure with 2-3 bullets per section (max 16 words per bullet):
+
+STRENGTHS:
+- ...
+
+WEAKNESSES:
+- ...
+
+IMPROVEMENTS:
+- ...
+
+SUGGESTIONS:
+- ...
+
+Be concise, supportive, and reference concepts instead of option letters.
+
+Assessment outcomes:
+${formattedResults}`;
+
+    try {
+      const result = await this.model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = this.parseFeedbackResponse(text);
+
+      if (
+        parsed.strengths.length === 0 &&
+        parsed.weaknesses.length === 0 &&
+        parsed.improvements.length === 0 &&
+        parsed.suggestions.length === 0
+      ) {
+        throw new Error('Gemini assessment feedback returned empty sections');
+      }
+
+      return {
+        strengths: parsed.strengths,
+        opportunities: parsed.weaknesses,
+        improvements: parsed.improvements,
+        suggestions: parsed.suggestions
+      };
+    } catch (error) {
+      console.error('Gemini AI assessment feedback failed:', error);
+      throw error;
     }
   }
 

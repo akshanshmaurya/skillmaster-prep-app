@@ -36,6 +36,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { interviewProfileApi, interviewSessionApi, questionsApi, messagesApi, analyticsApi, codeExecutionApi } from "@/lib/api/interview";
 import CodeEditor from "@/components/CodeEditor";
+import React, { ReactNode, useMemo } from "react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   id?: string;
@@ -44,6 +47,13 @@ interface Message {
   timestamp: string;
   questionId?: string;
   metadata?: any;
+}
+
+// Markdown renderer using react-markdown with GFM
+function renderMarkdown(text: string): React.ReactElement {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+  );
 }
 
 interface Question {
@@ -62,12 +72,26 @@ interface Question {
   timeLimit?: number;
 }
 
+interface QuestionSnapshot {
+  id: string;
+  title: string;
+  description: string;
+  type: string;
+  difficulty: string;
+  category?: string;
+  tags?: string[];
+  timeLimit?: number;
+  samples?: any[];
+  testCases?: any[];
+}
+
 interface InterviewSession {
   id: string;
   userId: string;
   status: string;
   currentPhase: string;
   questionIds: string[];
+  questionSnapshots?: QuestionSnapshot[];
   currentQuestionIndex: number;
   startTime?: string;
   endTime?: string;
@@ -75,6 +99,38 @@ interface InterviewSession {
   score?: any;
   createdAt: string;
   updatedAt: string;
+}
+
+interface InterviewEvaluation {
+  id?: string;
+  questionId: string;
+  question?: QuestionSnapshot | null;
+  scores: {
+    correctness: number;
+    efficiency: number;
+    clarity: number;
+    communication: number;
+    edgeCases: number;
+  };
+  totalScore: number;
+  feedback: {
+    strengths: string[];
+    weaknesses: string[];
+    improvements: string[];
+    suggestions: string[];
+  };
+  timeSpent: number;
+  hintsUsed: number;
+  codeSubmitted?: string;
+  language?: string;
+  executionResult?: any;
+  createdAt?: string;
+}
+
+interface InterviewResults {
+  session: InterviewSession;
+  score: any;
+  evaluations: InterviewEvaluation[];
 }
 
 interface UserProfile {
@@ -117,6 +173,10 @@ export default function InterviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [codingInviteShown, setCodingInviteShown] = useState(false);
   const [showCodePanel, setShowCodePanel] = useState(false);
+  const [isAwaitingAI, setIsAwaitingAI] = useState(false);
+  const [askedQuestionIds, setAskedQuestionIds] = useState<Set<string>>(new Set());
+  const [shownPromptIds, setShownPromptIds] = useState<Set<string>>(new Set());
+  const [sessionResults, setSessionResults] = useState<InterviewResults | null>(null);
   
   // Analytics State
   const [analytics, setAnalytics] = useState<any>(null);
@@ -127,6 +187,42 @@ export default function InterviewPage() {
   const [selectedLanguage, setSelectedLanguage] = useState("javascript");
   const [isCodeRunning, setIsCodeRunning] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
+
+  const aggregatedFeedback = useMemo(() => {
+    if (!sessionResults?.evaluations?.length) return null;
+    const aggregate = {
+      strengths: new Set<string>(),
+      weaknesses: new Set<string>(),
+      improvements: new Set<string>(),
+      suggestions: new Set<string>()
+    };
+
+    sessionResults.evaluations.forEach(evaluation => {
+      evaluation.feedback?.strengths?.forEach((item: string) => aggregate.strengths.add(item));
+      evaluation.feedback?.weaknesses?.forEach((item: string) => aggregate.weaknesses.add(item));
+      evaluation.feedback?.improvements?.forEach((item: string) => aggregate.improvements.add(item));
+      evaluation.feedback?.suggestions?.forEach((item: string) => aggregate.suggestions.add(item));
+    });
+
+    return {
+      strengths: Array.from(aggregate.strengths),
+      weaknesses: Array.from(aggregate.weaknesses),
+      improvements: Array.from(aggregate.improvements),
+      suggestions: Array.from(aggregate.suggestions)
+    };
+  }, [sessionResults]);
+
+  const scoreData = sessionResults?.score ?? currentSession?.score;
+
+  const questionLookup = useMemo(() => {
+    const map = new Map<string, QuestionSnapshot>();
+    (sessionResults?.session?.questionSnapshots || currentSession?.questionSnapshots || []).forEach((snapshot) => {
+      if (snapshot?.id) {
+        map.set(snapshot.id, snapshot);
+      }
+    });
+    return map;
+  }, [sessionResults, currentSession]);
 
   // Load user profile and analytics on component mount
   useEffect(() => {
@@ -200,6 +296,17 @@ export default function InterviewPage() {
     }
   };
 
+  // Load interview results for a session
+  const loadSessionResults = async (sessionId: string) => {
+    try {
+      const response = await interviewSessionApi.getResults(sessionId);
+      setSessionResults(response);
+      setCurrentSession(prev => prev ? { ...prev, ...response.session } : response.session);
+    } catch (error) {
+      console.error('Failed to load interview results:', error);
+    }
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -236,6 +343,20 @@ export default function InterviewPage() {
     try {
       setIsLoading(true);
       setError(null);
+      // reset UI/session state to avoid carrying previous session
+      setMessages([]);
+      setCurrentSession(null);
+      setCurrentQuestion(null);
+      setQuestions([]);
+      setCodingInviteShown(false);
+      setShowCodePanel(false);
+  setSessionResults(null);
+  setAskedQuestionIds(new Set());
+  setShownPromptIds(new Set());
+  setTimeElapsed(0);
+  setCandidateResponse("");
+  setExecutionResult(null);
+  setCode("");
 
       // First save profile if not already saved
       if (!userProfile) {
@@ -257,9 +378,14 @@ export default function InterviewPage() {
       setCurrentSession(sessionResponse.session);
 
       // Start the session
-      await interviewSessionApi.startSession(sessionResponse.session.id);
+      try {
+        await interviewSessionApi.startSession(sessionResponse.session.id);
+      } catch (e: any) {
+        // If start times out or fails, continue with a soft-start
+        console.warn('Start session fast-fallback:', e?.message || e);
+      }
       
-      // Load questions with type mapping to backend question schema
+      // Load questions: prefer questions bundled in session creation response
       const typeMap: Record<string, string[] | undefined> = {
         technical: ['dsa', 'coding'],
         'system-design': ['system-design'],
@@ -269,48 +395,79 @@ export default function InterviewPage() {
       const mapped = typeMap[interviewType as keyof typeof typeMap];
       const typeParam = mapped && mapped.length === 1 ? mapped[0] : undefined;
 
-      const questionsResponse = await questionsApi.getQuestions({
-        role: selectedRole,
-        company: selectedCompany,
-        difficulty,
-        type: typeParam,
-        limit: 5
-      });
-
-      setQuestions(questionsResponse.questions);
+      const bundledQuestions = (sessionResponse as any).questions as any[] | undefined;
+      let loadedList: Question[] = [] as any;
+      if (bundledQuestions && bundledQuestions.length) {
+        loadedList = bundledQuestions as any;
+      } else {
+        const questionsResponse = await questionsApi.getQuestions({
+          role: selectedRole,
+          company: selectedCompany,
+          difficulty,
+          type: typeParam,
+          limit: 5
+        });
+        loadedList = questionsResponse.questions as any;
+      }
+      // De-duplicate by id and try to diversify types
+      const unique: Record<string, Question> = {} as any;
+      for (const q of loadedList) { unique[q.id] = q; }
+      const deduped = Object.values(unique);
+      setQuestions(deduped);
       
       // Set first question
-      if (questionsResponse.questions.length > 0) {
-        setCurrentQuestion(questionsResponse.questions[0]);
+      // Prefer a non-coding question to simulate a realistic intro; fallback to first
+      const firstNonCoding = deduped.find(q => q.type !== 'dsa' && q.type !== 'coding');
+      const first = firstNonCoding || (deduped && deduped.length ? deduped[0] : undefined);
+      if (first) {
+        const q = first;
+        setCurrentQuestion(q);
+        setAskedQuestionIds(new Set([q.id]));
       }
 
-      // Generate AI welcome message
-      try {
-        const aiResponse = await messagesApi.getAIResponse(sessionResponse.session.id, {
-          question: "Introduction",
-          questionType: "behavioral",
-          difficulty,
-          company: selectedCompany,
-          role: selectedRole,
-          currentPhase: "intro"
+      // If first question is coding/DSA, show that question first; otherwise, show AI welcome
+      const firstQ = first;
+      if (firstQ && (firstQ.type === 'dsa' || firstQ.type === 'coding')) {
+        // Announce coding question once with a direct prompt (debounced by id)
+        setMessages(prev => {
+          if (shownPromptIds.has(firstQ.id)) return prev;
+          const promptMsg: Message = {
+            role: "interviewer",
+            content: `Please solve the following coding problem: ${firstQ.title}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            questionId: firstQ.id
+          };
+          setShownPromptIds(new Set([...Array.from(shownPromptIds), firstQ.id]));
+          return [promptMsg];
         });
-
-        const welcomeMessage: Message = {
-          role: "interviewer",
-          content: aiResponse.response.content,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-
-        setMessages([welcomeMessage]);
-      } catch (error) {
-        console.error('Failed to get AI welcome message:', error);
-        // Fallback to static message
-        const welcomeMessage: Message = {
-          role: "interviewer",
-          content: `Hello! Welcome to your ${selectedCompany} ${selectedRole} interview. I'm your AI interviewer today. Let's start with a brief introduction. Tell me about yourself and your background in software development.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages([welcomeMessage]);
+      } else {
+        try {
+          setIsAwaitingAI(true);
+          const aiResponse = await messagesApi.getAIResponse(sessionResponse.session.id, {
+            question: "Introduction",
+            questionType: "behavioral",
+            difficulty,
+            company: selectedCompany,
+            role: selectedRole,
+            currentPhase: "intro"
+          });
+          const welcomeMessage: Message = {
+            role: "interviewer",
+            content: aiResponse.response.content,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages([welcomeMessage]);
+        } catch (error) {
+          console.error('Failed to get AI welcome message:', error);
+          const welcomeMessage: Message = {
+            role: "interviewer",
+            content: `Hello! Welcome to your ${selectedCompany} ${selectedRole} interview. Let's start with a brief introduction.`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+          setMessages([welcomeMessage]);
+        } finally {
+          setIsAwaitingAI(false);
+        }
       }
       setInterviewStarted(true);
       setCurrentView("interview");
@@ -346,7 +503,18 @@ export default function InterviewPage() {
   };
 
   const sendResponse = async () => {
-    if (!candidateResponse.trim() || !currentSession || !currentQuestion) return;
+    if (!currentSession) {
+      setError('No active session. Please start the interview again.');
+      return;
+    }
+    if (!currentQuestion) {
+      setError('No current question available.');
+      return;
+    }
+    if (!candidateResponse.trim()) {
+      setError('Please type a response before sending.');
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -371,71 +539,88 @@ export default function InterviewPage() {
       });
 
       // Move to next question or complete interview
-      const nextQuestionIndex = currentSession.currentQuestionIndex + 1;
+      // Find current index by id and pick next unseen
+      const currentIndex = questions.findIndex(q => q.id === currentQuestion.id);
+      let nextQuestion: Question | null = null;
+      // scan forward
+      for (let i = currentIndex + 1; i < questions.length; i++) {
+        const q = questions[i];
+        if (!askedQuestionIds.has(q.id)) { nextQuestion = q; break; }
+      }
+      // if nothing forward, scan from start
+      if (!nextQuestion) {
+        for (let i = 0; i < questions.length; i++) {
+          const q = questions[i];
+          if (!askedQuestionIds.has(q.id)) { nextQuestion = q; break; }
+        }
+      }
       
-      if (nextQuestionIndex < questions.length) {
+      if (nextQuestion) {
         // Move to next question
-        setCurrentQuestion(questions[nextQuestionIndex]);
+        setCurrentQuestion(nextQuestion);
+        setAskedQuestionIds(prev => new Set([...Array.from(prev), nextQuestion!.id]));
         
-        // Generate AI response for next question
-        const nextQuestion = questions[nextQuestionIndex];
-        
-        try {
-          const aiResponse = await messagesApi.getAIResponse(currentSession.id, {
-            question: nextQuestion.description,
-            questionType: nextQuestion.type,
-            difficulty: nextQuestion.difficulty,
-            company: selectedCompany,
-            role: selectedRole,
-            candidateAnswer: candidateResponse,
-            currentPhase: nextQuestion.type === 'dsa' ? 'technical' : nextQuestion.type === 'behavioral' ? 'behavioral' : 'system-design'
-          });
-
-          const aiMsg: Message = {
+        // Next question prompt: If coding, announce coding question; else, get AI interviewer prompt
+        if (nextQuestion.type === 'dsa' || nextQuestion.type === 'coding') {
+          // For coding questions, don't re-announce if already asked for same id
+          const promptMsg: Message = {
             role: "interviewer",
-            content: aiResponse.response.content,
+            content: `Please solve the following coding problem: ${nextQuestion.title}`,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             questionId: nextQuestion.id
           };
-
           setTimeout(() => {
-            setMessages(prev => [...prev, aiMsg]);
-          }, 2000);
-        } catch (error) {
-          console.error('Failed to get AI response:', error);
-          // Fallback to static response
-          let aiResponse = "";
-          
-          if (nextQuestion.type === 'dsa') {
-            aiResponse = `Great! Now let's move to a ${nextQuestion.difficulty} ${nextQuestion.category} problem. ${nextQuestion.description}`;
-          } else if (nextQuestion.type === 'system-design') {
-            aiResponse = `Excellent. Now for a system design question: ${nextQuestion.description}`;
-          } else if (nextQuestion.type === 'behavioral') {
-            aiResponse = `Good answer. Let me ask you a behavioral question: ${nextQuestion.description}`;
-          } else {
-            aiResponse = `Now let's discuss: ${nextQuestion.description}`;
+            setMessages(prev => {
+              const alreadyAsked = shownPromptIds.has(nextQuestion.id) || prev.some(m => m.role === 'interviewer' && m.questionId === nextQuestion.id && m.content.includes(nextQuestion.title));
+              if (alreadyAsked) return prev;
+              setShownPromptIds(new Set([...Array.from(shownPromptIds), nextQuestion.id]));
+              return [...prev, promptMsg];
+            });
+          }, 500);
+        } else {
+          try {
+            setIsAwaitingAI(true);
+            const aiResponse = await messagesApi.getAIResponse(currentSession.id, {
+              question: nextQuestion.description,
+              questionType: nextQuestion.type,
+              difficulty: nextQuestion.difficulty,
+              company: selectedCompany,
+              role: selectedRole,
+              candidateAnswer: candidateResponse,
+              currentPhase: nextQuestion.type === 'behavioral' ? 'behavioral' : nextQuestion.type === 'system-design' ? 'system-design' : 'technical'
+            });
+            const aiMsg: Message = {
+              role: "interviewer",
+              content: aiResponse.response.content,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              questionId: nextQuestion.id
+            };
+            setTimeout(() => {
+              setMessages(prev => [...prev, aiMsg]);
+            }, 800);
+          } catch (error) {
+            console.error('Failed to get AI response:', error);
+            const aiMsg: Message = {
+              role: "interviewer",
+              content: `Now let's discuss: ${nextQuestion.description}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              questionId: nextQuestion.id
+            };
+            setTimeout(() => {
+              setMessages(prev => [...prev, aiMsg]);
+            }, 800);
+          } finally {
+            setIsAwaitingAI(false);
           }
-
-          const aiMsg: Message = {
-            role: "interviewer",
-            content: aiResponse,
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            questionId: nextQuestion.id
-          };
-
-          setTimeout(() => {
-            setMessages(prev => [...prev, aiMsg]);
-          }, 2000);
         }
 
-        // Update session state
-        setCurrentSession(prev => prev ? {
-          ...prev,
-          currentQuestionIndex: nextQuestionIndex
-        } : null);
+        // Update session state locally
+        setCurrentSession(prev => prev ? { ...prev, currentQuestionIndex: (prev.currentQuestionIndex || 0) + 1 } : prev);
       } else {
         // Complete interview
         const completeResponse = await interviewSessionApi.completeSession(currentSession.id);
+        setCurrentSession(prev => prev ? { ...prev, ...completeResponse.session } : completeResponse.session);
+        await loadSessionResults(currentSession.id);
         
         const completionMsg: Message = {
           role: "interviewer",
@@ -480,8 +665,10 @@ export default function InterviewPage() {
     if (!currentSession) return;
     try {
       setIsLoading(true);
-      const complete = await interviewSessionApi.completeSession(currentSession.id);
+      const sessionId = currentSession.id;
+      const complete = await interviewSessionApi.completeSession(sessionId);
       setCurrentSession(prev => prev ? { ...prev, ...complete.session } : complete.session);
+      await loadSessionResults(sessionId);
       const completionMsg: Message = {
         role: "interviewer",
         content: "Interview ended. Calculating your results...",
@@ -490,11 +677,27 @@ export default function InterviewPage() {
       setMessages(prev => [...prev, completionMsg]);
       setInterviewStarted(false);
       setCurrentView("results");
+      // hard reset of question state to avoid accidental reuse
+      setCurrentQuestion(null);
+      setQuestions([]);
+      setShowCodePanel(false);
+      setCodingInviteShown(false);
       loadAnalytics();
       loadSessionHistory();
     } catch (e) {
       console.error('End interview error:', e);
-      setError('Failed to end interview. Please try again.');
+      // Soft-complete on client if backend completion fails
+      setCurrentView("results");
+      setInterviewStarted(false);
+      setCurrentQuestion(null);
+      setQuestions([]);
+      setShowCodePanel(false);
+      setCodingInviteShown(false);
+      if (currentSession?.id) {
+        await loadSessionResults(currentSession.id);
+      }
+      loadAnalytics();
+      loadSessionHistory();
     } finally {
       setIsLoading(false);
     }
@@ -933,7 +1136,7 @@ export default function InterviewPage() {
         {currentView === "interview" && (
           <>
             {/* Interview Screen */}
-            <div className="fixed top-16 left-64 right-0 bottom-0 bg-background flex flex-col">
+            <div className="fixed top-16 left-64 right-0 bottom-0 bg-background flex flex-col overflow-hidden">
               {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-border">
                 <div className="flex items-center gap-4">
@@ -962,10 +1165,15 @@ export default function InterviewPage() {
               </div>
 
               {/* Main Content */}
-              <div className="flex-1 grid grid-cols-[1fr_350px] overflow-hidden">
+              <div className={`flex-1 grid ${showCodePanel ? 'grid-cols-[1fr_520px]' : 'grid-cols-[1fr_350px]'} overflow-hidden min-h-0`}>
                 {/* Chat Area */}
-                <div className="flex flex-col">
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex flex-col min-h-0">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+                    {error && (
+                      <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                        {error}
+                      </div>
+                    )}
                     {messages.map((message, index) => (
                       <div
                         key={index}
@@ -980,7 +1188,13 @@ export default function InterviewPage() {
                         </div>
                         <div className={`flex-1 max-w-2xl ${message.role === "candidate" ? "text-right" : ""}`}>
                           <div className={`inline-block p-4 rounded-lg ${message.role === "interviewer" ? "bg-card" : "bg-primary text-primary-foreground"}`}>
-                            <p className="text-sm">{message.content}</p>
+                            {message.role === 'interviewer' ? (
+                              <div className="prose prose-sm max-w-none">
+                                {renderMarkdown(message.content)}
+                              </div>
+                            ) : (
+                              <p className="text-sm">{message.content}</p>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">{message.timestamp}</p>
                         </div>
@@ -999,26 +1213,10 @@ export default function InterviewPage() {
                     </div>
                   )}
 
-                  {/* Inline Code Editor for Coding Questions */}
-                  {showCodePanel && currentQuestion && (currentQuestion.type === 'dsa' || currentQuestion.type === 'coding') && (
-                    <div className="border-t border-border p-4">
-                      <Card className="p-4">
-                        <h4 className="text-sm font-semibold mb-3">Coding Workspace</h4>
-                        <CodeEditor
-                          language={selectedLanguage}
-                          onLanguageChange={setSelectedLanguage}
-                          onCodeChange={setCode}
-                          onRunCode={handleCodeExecution}
-                          initialCode={code}
-                          isRunning={isCodeRunning}
-                          executionResult={executionResult}
-                        />
-                      </Card>
-                    </div>
-                  )}
+                  {/* Coding editor moved to right column when visible */}
 
                   {/* Input Area */}
-                  <div className="border-t border-border p-4">
+                  <div className="border-t border-border p-4 shrink-0">
                     <form className="flex gap-3" onSubmit={(e) => { e.preventDefault(); sendResponse(); }}>
                       <Textarea
                         value={candidateResponse}
@@ -1051,8 +1249,9 @@ export default function InterviewPage() {
                   </div>
                 </div>
 
-                {/* Side Panel */}
-                <div className="border-l border-border bg-card p-4 overflow-y-auto">
+                {/* Right Column: Side Panel or Code Panel */}
+                {!showCodePanel && (
+                <div className="border-l border-border bg-card p-4 overflow-y-auto min-h-0">
                   <Tabs defaultValue="analysis">
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="analysis">Analysis</TabsTrigger>
@@ -1110,12 +1309,50 @@ export default function InterviewPage() {
                     </TabsContent>
                   </Tabs>
                 </div>
+                )}
+                {showCodePanel && currentQuestion && (currentQuestion.type === 'dsa' || currentQuestion.type === 'coding') && (
+                <div className="border-l border-border bg-card p-4 overflow-y-auto min-h-0">
+                  <Card className="p-4">
+                    <h4 className="text-sm font-semibold mb-3">Coding Workspace</h4>
+                    <div className="prose prose-sm max-w-none mb-4">
+                      {renderMarkdown((() => {
+                        const title = `### ${currentQuestion.title}`;
+                        const meta = `\n\n**Type:** ${currentQuestion.type}  \
+**Difficulty:** ${currentQuestion.difficulty}  \
+**Category:** ${currentQuestion.category || 'general'}`;
+                        const desc = `\n\n${currentQuestion.description || ''}`;
+                        // Try to extract Input/Output/Constraints if present; else add a minimal structure
+                        const hasStructure = /input\s*format|output\s*format|constraints/i.test(currentQuestion.description || '');
+                        const structure = hasStructure ? '' : `\n\n#### Input Format\n- As described in the problem.\n\n#### Output Format\n- As described in the problem.\n\n#### Constraints\n- Reasonable limits for the given difficulty.`;
+                        const samples = (currentQuestion as any).samples && (currentQuestion as any).samples.length
+                          ? `\n\n#### Sample Tests\n${(currentQuestion as any).samples.slice(0,3).map((s:any,i:number)=>`Test ${i+1}:\n- Input: \`${s.input}\`\n- Expected: \`${s.expectedOutput}\`\n- Explanation: ${s.explanation || ''}`).join('\n\n')}`
+                          : (currentQuestion.testCases && currentQuestion.testCases.length
+                            ? `\n\n#### Sample Tests\n${currentQuestion.testCases.slice(0,3).map((t:any,i:number)=>`Test ${i+1}:\n- Input: \`${t.input}\`\n- Expected: \`${t.expectedOutput}\``).join('\n\n')}`
+                            : '');
+                        const hiddenTests = currentQuestion.testCases && currentQuestion.testCases.length > 3
+                          ? `\n\n> Additional hidden tests: ${currentQuestion.testCases.length - 3}`
+                          : '';
+                        return `${title}${meta}${desc}${structure}${samples}${hiddenTests}`;
+                      })())}
+                    </div>
+                    <CodeEditor
+                      language={selectedLanguage}
+                      onLanguageChange={setSelectedLanguage}
+                      onCodeChange={setCode}
+                      onRunCode={handleCodeExecution}
+                      initialCode={code}
+                      isRunning={isCodeRunning}
+                      executionResult={executionResult}
+                    />
+                  </Card>
+                </div>
+                )}
               </div>
             </div>
           </>
         )}
 
-        {currentView === "results" && currentSession?.score && (
+        {currentView === "results" && (
           <>
             {/* Results View */}
             <section className="mb-8">
@@ -1125,6 +1362,11 @@ export default function InterviewPage() {
               </p>
             </section>
 
+            {!scoreData ? (
+              <Card className="p-6">
+                <p className="text-sm text-muted-foreground">Calculating your results... If this takes too long, try refreshing your profile or check your recent sessions.</p>
+              </Card>
+            ) : (
             <div className="grid grid-cols-[2fr_1fr] gap-6">
               <div className="space-y-6">
                 {/* Overall Score */}
@@ -1132,7 +1374,7 @@ export default function InterviewPage() {
                   <h2 className="text-xl font-semibold mb-4">Overall Performance</h2>
                   <div className="text-center mb-6">
                     <div className="text-6xl font-bold text-primary mb-2">
-                      {currentSession.score.overall}%
+                      {scoreData.overall}%
                     </div>
                     <p className="text-muted-foreground">Overall Score</p>
                   </div>
@@ -1141,30 +1383,30 @@ export default function InterviewPage() {
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span>Technical</span>
-                        <span>{currentSession.score.technical}%</span>
+                        <span>{scoreData.technical}%</span>
                       </div>
-                      <Progress value={currentSession.score.technical} className="h-2" />
+                      <Progress value={scoreData.technical} className="h-2" />
                     </div>
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span>Communication</span>
-                        <span>{currentSession.score.communication}%</span>
+                        <span>{scoreData.communication}%</span>
                       </div>
-                      <Progress value={currentSession.score.communication} className="h-2" />
+                      <Progress value={scoreData.communication} className="h-2" />
                     </div>
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span>Problem Solving</span>
-                        <span>{currentSession.score.problemSolving}%</span>
+                        <span>{scoreData.problemSolving}%</span>
                       </div>
-                      <Progress value={currentSession.score.problemSolving} className="h-2" />
+                      <Progress value={scoreData.problemSolving} className="h-2" />
                     </div>
                     <div>
                       <div className="flex justify-between text-sm mb-1">
                         <span>Time Management</span>
-                        <span>{currentSession.score.timeManagement}%</span>
+                        <span>{scoreData.timeManagement}%</span>
                       </div>
-                      <Progress value={currentSession.score.timeManagement} className="h-2" />
+                      <Progress value={scoreData.timeManagement} className="h-2" />
                     </div>
                   </div>
                 </Card>
@@ -1175,16 +1417,16 @@ export default function InterviewPage() {
                   <div className="space-y-4">
                     <div>
                       <h3 className="font-medium mb-2">Overall</h3>
-                      <p className="text-sm text-muted-foreground">{currentSession.score.feedback.overall}</p>
+                      <p className="text-sm text-muted-foreground">{scoreData.feedback.overall}</p>
                     </div>
                     <div>
                       <h3 className="font-medium mb-2">Technical</h3>
-                      <p className="text-sm text-muted-foreground">{currentSession.score.feedback.technical}</p>
+                      <p className="text-sm text-muted-foreground">{scoreData.feedback.technical}</p>
                     </div>
                     <div>
                       <h3 className="font-medium mb-2">Recommendations</h3>
                       <ul className="text-sm text-muted-foreground space-y-1">
-                        {currentSession.score.feedback.recommendations.map((rec, index) => (
+                        {scoreData.feedback.recommendations.map((rec: string, index: number) => (
                           <li key={index} className="flex items-start gap-2">
                             <span className="text-primary">•</span>
                             <span>{rec}</span>
@@ -1194,22 +1436,127 @@ export default function InterviewPage() {
                     </div>
                   </div>
                 </Card>
+
+                {/* Question-level feedback */}
+                <Card className="p-6">
+                  <h2 className="text-xl font-semibold mb-4">Question-by-Question Feedback</h2>
+                  {!(sessionResults?.evaluations?.length) ? (
+                    <p className="text-sm text-muted-foreground">Complete an interview to see detailed question feedback.</p>
+                  ) : (
+                  <div className="space-y-4">
+                    {sessionResults.evaluations.map((evaluation) => {
+                      const questionMeta = evaluation.question || questionLookup.get(evaluation.questionId);
+                      const strengths = evaluation.feedback?.strengths?.length ? evaluation.feedback.strengths : ["No key strengths captured for this answer yet."];
+                      const weaknesses = evaluation.feedback?.weaknesses?.length ? evaluation.feedback.weaknesses : ["No major weaknesses recorded."];
+                      const improvements = evaluation.feedback?.improvements?.length ? evaluation.feedback.improvements : ["Keep practicing to unlock tailored improvements."];
+
+                      return (
+                        <div key={evaluation.id || evaluation.questionId} className="rounded-lg border border-border p-4 space-y-3">
+                          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div>
+                              <h3 className="font-semibold text-base">{questionMeta?.title || 'Interview Question'}</h3>
+                              <div className="flex flex-wrap items-center gap-2 mt-1">
+                                {questionMeta?.type && (
+                                  <Badge variant="outline" className="capitalize">
+                                    {questionMeta.type.replace('-', ' ')}
+                                  </Badge>
+                                )}
+                                {questionMeta?.difficulty && (
+                                  <Badge variant="secondary" className="capitalize">
+                                    {questionMeta.difficulty}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right min-w-[72px]">
+                              <div className="text-2xl font-bold">{Math.round(evaluation.totalScore)}%</div>
+                              <p className="text-xs text-muted-foreground">Score</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="w-4 h-4" />
+                            <span>{formatTime(evaluation.timeSpent || 0)} spent</span>
+                            <span>•</span>
+                            <span>{evaluation.hintsUsed || 0} hints used</span>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-3 text-sm text-muted-foreground">
+                            <div>
+                              <h4 className="font-medium text-foreground mb-1">Strengths</h4>
+                              <ul className="space-y-1 list-disc list-inside">
+                                {strengths.slice(0,3).map((item, idx) => (
+                                  <li key={idx}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-foreground mb-1">Opportunities</h4>
+                              <ul className="space-y-1 list-disc list-inside">
+                                {weaknesses.slice(0,3).map((item, idx) => (
+                                  <li key={idx}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-foreground mb-1">Action Items</h4>
+                              <ul className="space-y-1 list-disc list-inside">
+                                {improvements.slice(0,3).map((item, idx) => (
+                                  <li key={idx}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  )}
+                </Card>
               </div>
 
               <div className="space-y-6">
+                {/* Focus Areas */}
+                <Card className="p-6">
+                  <h3 className="font-semibold mb-4">Focus Areas</h3>
+                  {aggregatedFeedback ? (
+                    <div className="space-y-4 text-sm text-muted-foreground">
+                      <div>
+                        <h4 className="font-medium text-foreground mb-1">Top Weaknesses</h4>
+                        <ul className="space-y-1 list-disc list-inside">
+                          {aggregatedFeedback.weaknesses.slice(0,4).map((item, idx) => (
+                            <li key={idx}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-foreground mb-1">Suggested Improvements</h4>
+                        <ul className="space-y-1 list-disc list-inside">
+                          {aggregatedFeedback.improvements.slice(0,4).map((item, idx) => (
+                            <li key={idx}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Once you complete more questions, we’ll highlight the areas that need your attention the most.</p>
+                  )}
+                </Card>
+
                 {/* Topic Breakdown */}
                 <Card className="p-6">
                   <h3 className="font-semibold mb-4">Topic Breakdown</h3>
                   <div className="space-y-3">
-                    {Object.entries(currentSession.score.breakdown).map(([topic, score]) => (
+                    {Object.entries(scoreData.breakdown || {}).map(([topic, rawScore]) => {
+                      const score = Number(rawScore as any);
+                      return (
                       <div key={topic}>
                         <div className="flex justify-between text-sm mb-1">
                           <span className="capitalize">{topic}</span>
                           <span>{score}%</span>
                         </div>
-                        <Progress value={score as number} className="h-2" />
+                        <Progress value={score} className="h-2" />
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </Card>
 
@@ -1224,6 +1571,8 @@ export default function InterviewPage() {
                         setCurrentSession(null);
                         setMessages([]);
                         setCurrentQuestion(null);
+                        setQuestions([]);
+                        setSessionResults(null);
                       }}
                     >
                       <Play className="w-4 h-4 mr-2" />
@@ -1241,6 +1590,7 @@ export default function InterviewPage() {
                 </Card>
               </div>
             </div>
+            )}
           </>
         )}
       </div>

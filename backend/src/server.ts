@@ -8,6 +8,8 @@ import { testConnection } from './config/database';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
 import interviewRoutes from './routes/interview';
+import practiceRoutes from './routes/practice';
+import assessmentRoutes from './routes/assessment';
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
@@ -24,6 +26,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/interview', interviewRoutes);
+app.use('/api/practice', practiceRoutes);
+app.use('/api/tests', assessmentRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -58,6 +62,19 @@ app.get('/', (req: Request, res: Response) => {
         completeSession: 'POST /api/interview/sessions/:sessionId/complete',
         getHistory: 'GET /api/interview/history',
         getAnalytics: 'GET /api/interview/analytics'
+      },
+      practice: {
+        listTopics: 'GET /api/practice/topics',
+        generate: 'POST /api/practice/generate',
+        getSession: 'GET /api/practice/sessions/:sessionId',
+        submitSession: 'POST /api/practice/sessions/:sessionId/submit'
+      },
+      tests: {
+        listTracks: 'GET /api/tests/tracks',
+        generate: 'POST /api/tests/generate',
+        getSession: 'GET /api/tests/sessions/:sessionId',
+        submitSession: 'POST /api/tests/sessions/:sessionId/submit',
+        history: 'GET /api/tests/history'
       }
     }
   });

@@ -26,7 +26,7 @@ export interface Question {
   companies: string[];
   roles: string[];
   purpose?: 'technical' | 'coding' | 'system-design' | 'behavioral';
-  source?: 'seed' | 'ai';
+  source?: 'seed' | 'ai' | 'local';
   testCases?: TestCase[];
   expectedAnswer?: string;
   hints?: string[];
@@ -49,6 +49,16 @@ export interface InterviewSession {
   status: 'setup' | 'active' | 'paused' | 'completed' | 'cancelled';
   currentPhase: 'intro' | 'technical' | 'behavioral' | 'system-design' | 'questions';
   questionIds: string[];
+  questionSnapshots?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    type: 'dsa' | 'system-design' | 'behavioral' | 'coding';
+    difficulty: 'easy' | 'medium' | 'hard';
+    category?: string;
+    tags?: string[];
+    timeLimit?: number;
+  }>;
   currentQuestionIndex: number;
   startTime?: Date;
   endTime?: Date;
@@ -236,6 +246,16 @@ export interface InterviewSessionResponse {
   status: string;
   currentPhase: string;
   questionIds: string[];
+  questionSnapshots?: Array<{
+    id: string;
+    title: string;
+    description: string;
+    type: string;
+    difficulty: string;
+    category?: string;
+    tags?: string[];
+    timeLimit?: number;
+  }>;
   currentQuestionIndex: number;
   startTime?: Date;
   endTime?: Date;
