@@ -1232,7 +1232,7 @@ router.post('/sessions/:sessionId/complete', authMiddleware, async (req: Request
 
     const overallScore = ScoringService.calculateInterviewScore(questionEvaluations);
 
-    // Update session
+  // Update session
     const endTime = new Date();
     const session = await sessionsCollection.findOne({ _id: new ObjectId(sessionId) });
     const startTime = session?.startTime || endTime;
@@ -1254,6 +1254,24 @@ router.post('/sessions/:sessionId/complete', authMiddleware, async (req: Request
 
     if (!result || !result.value) {
       return res.status(404).json({ error: 'Session not found' });
+    }
+
+    // Update user aggregate stats for leaderboard and dashboard
+    try {
+      const usersCollection = db.collection('users');
+      const scoreContribution = typeof overallScore?.overall === 'number' ? overallScore.overall : 0;
+      await usersCollection.updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $inc: {
+            totalScore: scoreContribution,
+            testsCompleted: 1
+          },
+          $set: { updatedAt: new Date() }
+        }
+      );
+    } catch (e) {
+      console.warn('Failed to update user aggregates after interview completion', e);
     }
 
     res.status(200).json({

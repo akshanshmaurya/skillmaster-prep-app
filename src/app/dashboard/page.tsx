@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthToken, getAuthUser } from "@/lib/auth";
 import AppShell from "@/components/layout/AppShell";
@@ -9,9 +9,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, TrendingUp, Clock, Users, CheckCircle2, Target, Zap } from "lucide-react";
+import { dashboardApi } from "@/lib/api/dashboard";
 
 export default function DashboardPage() {
   const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
     const checkAuth = () => {
@@ -30,14 +35,27 @@ export default function DashboardPage() {
       }
     };
 
-    checkAuth();
+    const load = async () => {
+      try {
+        checkAuth();
+        const data = await dashboardApi.getSummary();
+        setSummary(data);
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load dashboard');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
   }, [router]);
-  const stats = [
-    { label: "Tests Taken", value: "24", icon: Target, color: "text-[#6633FF]" },
-    { label: "Questions Solved", value: "342", icon: CheckCircle2, color: "text-[#00CC66]" },
-    { label: "Study Hours", value: "48", icon: Clock, color: "text-[#AA66FF]" },
-    { label: "Rank", value: "#127", icon: TrendingUp, color: "text-[#6633FF]" },
-  ];
+
+  const stats = summary ? [
+    { label: "Tests Taken", value: String(summary.stats?.testsCompleted ?? 0), icon: Target, color: "text-[#6633FF]" },
+    { label: "Questions Solved", value: String(summary.stats?.questionsSolved ?? 0), icon: CheckCircle2, color: "text-[#00CC66]" },
+    { label: "Study Hours", value: String(summary.stats?.studyHours ?? 0), icon: Clock, color: "text-[#AA66FF]" },
+    { label: "Rank", value: summary.stats?.rank ? `#${summary.stats.rank}` : "-", icon: TrendingUp, color: "text-[#6633FF]" },
+  ] : [];
 
   const trendingTopics = [
     "Dynamic Programming", "System Design", "React Hooks", "Database Indexing",
@@ -90,13 +108,40 @@ export default function DashboardPage() {
     },
   ];
 
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="p-8 max-w-7xl">
+          <section className="mb-8">
+            <h1 className="text-3xl font-semibold">Loading your dashboard…</h1>
+          </section>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <div className="p-8 max-w-7xl">
+          <section className="mb-8">
+            <h1 className="text-3xl font-semibold">Dashboard</h1>
+            <p className="text-red-500 mt-2">{error}</p>
+          </section>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const userName = summary?.user?.name || getAuthUser()?.name || 'There';
+
   return (
     <AppShell>
       <div className="p-8 max-w-7xl">
         {/* Hero Section */}
         <section className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Welcome back, Akshansh!</h1>
-          <p className="text-muted-foreground text-lg">Continue your placement preparation journey</p>
+          <h1 className="text-4xl font-bold mb-2">Welcome back, {userName}!</h1>
+          <p className="text-muted-foreground text-lg">Your progress overview and next best steps</p>
         </section>
 
         {/* Stats Grid */}
@@ -115,7 +160,7 @@ export default function DashboardPage() {
           })}
         </section>
 
-        {/* Search & Filter Section */}
+        {/* Search & Filter Section
         <section className="mb-8">
           <Card className="p-6">
             <div className="flex items-center gap-4 mb-6">
@@ -132,38 +177,69 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            {/* Trending Topics */}
-            <div className="mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                <span className="text-sm font-semibold">Trending Topics</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {trendingTopics.map((topic) => (
-                  <Badge key={topic} variant="secondary" className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors">
-                    {topic}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </Card>
-        </section>
+        //     {/* Trending Topics */}
+        {/* //     <div className="mb-4">
+        //       <div className="flex items-center gap-2 mb-3">
+        //         <TrendingUp className="w-4 h-4 text-primary" />
+        //         <span className="text-sm font-semibold">Trending Topics</span>
+        //       </div>
+        //       <div className="flex flex-wrap gap-2">
+        //         {trendingTopics.map((topic) => ( */}
+        {/* //           <Badge key={topic} variant="secondary" className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors">
+        //             {topic}
+        //           </Badge>
+        //         ))}
+        //       </div>
+        //     </div>
+        //   </Card>
+        // </section> */}
 
-        {/* Top Companies */}
+        {/* Recent Activity */}
         <section className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">Top Companies</h2>
-          <div className="grid grid-cols-4 gap-4">
-            {companies.map((company) => (
-              <Card key={company.name} className="p-6 hover:border-primary transition-colors cursor-pointer">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{company.logo}</span>
-                  <div>
-                    <h3 className="font-semibold">{company.name}</h3>
-                    <p className="text-sm text-muted-foreground">{company.tests} tests</p>
+          <h2 className="text-2xl font-bold mb-4">Recent Activity</h2>
+          <div className="grid grid-cols-3 gap-4">
+            <Card className="p-6">
+              <h3 className="font-semibold mb-3">Assessments</h3>
+              <div className="space-y-2 text-sm">
+                {(summary?.recent?.assessments || []).map((a: any) => (
+                  <div key={a.id} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">{a.topic}</span>
+                    <span className="font-medium">{a.score}</span>
                   </div>
-                </div>
-              </Card>
-            ))}
+                ))}
+                {(!summary?.recent?.assessments || summary.recent.assessments.length === 0) && (
+                  <p className="text-muted-foreground">No completed assessments yet</p>
+                )}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <h3 className="font-semibold mb-3">Practice</h3>
+              <div className="space-y-2 text-sm">
+                {(summary?.recent?.practice || []).map((p: any) => (
+                  <div key={p.id} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">{p.topic}</span>
+                    <span className="font-medium">{p.score}</span>
+                  </div>
+                ))}
+                {(!summary?.recent?.practice || summary.recent.practice.length === 0) && (
+                  <p className="text-muted-foreground">No practice sessions yet</p>
+                )}
+              </div>
+            </Card>
+            <Card className="p-6">
+              <h3 className="font-semibold mb-3">Interviews</h3>
+              <div className="space-y-2 text-sm">
+                {(summary?.recent?.interviews || []).map((i: any) => (
+                  <div key={i.id} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Session</span>
+                    <span className="font-medium">{i.overall}</span>
+                  </div>
+                ))}
+                {(!summary?.recent?.interviews || summary.recent.interviews.length === 0) && (
+                  <p className="text-muted-foreground">No interviews completed yet</p>
+                )}
+              </div>
+            </Card>
           </div>
         </section>
 
@@ -174,40 +250,18 @@ export default function DashboardPage() {
             <Button variant="ghost">View All →</Button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            {recommendedTests.map((test) => (
+            {(summary?.latestTestScores ? Object.values(summary.latestTestScores).slice(0,4) : []).map((test: any, idx: number) => (
               <Card key={test.id} className="p-6 hover:border-primary transition-colors">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <Badge variant="outline" className="mb-2">{test.company}</Badge>
-                    <h3 className="font-semibold text-lg">{test.title}</h3>
+                    <Badge variant="outline" className="mb-2">{test.track}</Badge>
+                    <h3 className="font-semibold text-lg">{test.topic}</h3>
                   </div>
-                  <Badge 
-                    variant={test.difficulty === "Easy" ? "default" : test.difficulty === "Medium" ? "secondary" : "destructive"}
-                  >
-                    {test.difficulty}
-                  </Badge>
+                  <Badge>{test.score}</Badge>
                 </div>
                 
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {test.topics.map((topic) => (
-                    <Badge key={topic} variant="secondary" className="text-xs">
-                      {topic}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    {test.duration}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Users className="w-4 h-4" />
-                    {test.attempted.toLocaleString()} attempted
-                  </div>
-                </div>
-
-                <Button className="w-full">Start Test</Button>
+                <div className="text-sm text-muted-foreground mb-4">Updated {new Date(test.updatedAt || test.at).toLocaleString()}</div>
+                <Button className="w-full">Retake</Button>
               </Card>
             ))}
           </div>

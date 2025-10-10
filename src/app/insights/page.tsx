@@ -42,8 +42,20 @@ import {
   ComposedChart
 } from "recharts";
 import { testsApi } from "@/lib/api/tests";
+import { insightsApi } from "@/lib/api/insights";
 
 type HistoryEntry = Awaited<ReturnType<typeof testsApi.getHistory>>["history"][number];
+type ProgressPoint = { week: string; score: number; testsTaken: number; hoursStudied: number };
+type WeaknessView = {
+  area: string;
+  severity: 'high' | 'medium' | 'low';
+  currentScore: number;
+  attempts: number;
+  avgScore: number;
+  improvement: number;
+  recommendation: string;
+  resources: string[];
+};
 const HISTORY_LIMIT = 12;
 
 export default function InsightsPage() {
@@ -51,6 +63,8 @@ export default function InsightsPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [insights, setInsights] = useState<any>(null);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,6 +87,21 @@ export default function InsightsPage() {
     };
 
     loadHistory();
+
+    const loadOverview = async () => {
+      try {
+        const data = await insightsApi.getOverview();
+        if (!isMounted) return;
+        setInsights(data);
+        setInsightsError(null);
+      } catch (err) {
+        if (!isMounted) return;
+        console.warn('Unable to load insights overview:', err);
+        setInsightsError(err instanceof Error ? err.message : 'Unable to load insights.');
+      }
+    };
+
+    loadOverview();
 
     return () => {
       isMounted = false;
@@ -112,150 +141,45 @@ export default function InsightsPage() {
     };
   }, [history]);
 
-  const overallScore = derivedHistory?.latestScore ?? 76;
-  const learningVelocity = derivedHistory ? Math.round(derivedHistory.velocity) : 12;
-  const predictedScore = derivedHistory ? Math.min(100, Math.round(derivedHistory.averageScore + Math.max(0, derivedHistory.improvement * 1.5))) : 85;
-  const improvementDelta = derivedHistory ? Math.round(derivedHistory.improvement) : 8;
+  const overallScore = insights?.overview?.latestScore ?? derivedHistory?.latestScore ?? 0;
+  const learningVelocity = insights?.overview?.velocity ?? (derivedHistory ? Math.round(derivedHistory.velocity) : 0);
+  const predictedScore = insights?.overview?.predictedScore ?? (derivedHistory ? Math.min(100, Math.round(derivedHistory.averageScore + Math.max(0, derivedHistory.improvement * 1.5))) : 0);
+  const improvementDelta = insights?.overview?.improvement ?? (derivedHistory ? Math.round(derivedHistory.improvement) : 0);
   const velocityIsPositive = learningVelocity >= 0;
   const velocityTextClass = velocityIsPositive ? "text-[#00CC66]" : "text-red-500";
 
-  const skillsData = [
-    { skill: "Data Structures", current: 85, target: 95, industry: 80 },
-    { skill: "Algorithms", current: 72, target: 90, industry: 75 },
-    { skill: "System Design", current: 68, target: 85, industry: 70 },
-    { skill: "Frontend Dev", current: 88, target: 95, industry: 82 },
-    { skill: "Backend Dev", current: 75, target: 90, industry: 78 },
-    { skill: "Databases", current: 70, target: 85, industry: 72 },
-  ];
+  const skillsData = (insights?.skillHeatmap || []).map((x: any) => ({
+    skill: x.topic,
+    current: x.score ?? 0,
+    target: Math.min(100, Math.max((x.score ?? 0) + 10, 0)),
+    industry: 75
+  }));
 
-  const weaknessAnalysis = [
-    {
-      area: "Dynamic Programming",
-      severity: "high",
-      currentScore: 45,
-      attempts: 12,
-      avgScore: 68,
-      improvement: -8,
-      recommendation: "Focus on memoization patterns and classic DP problems",
-      resources: ["LeetCode DP Patterns", "MIT OCW Algorithms", "AlgoExpert DP Course"]
-    },
-    {
-      area: "Graph Algorithms",
-      severity: "medium",
-      currentScore: 62,
-      attempts: 18,
-      avgScore: 72,
-      improvement: 5,
-      recommendation: "Practice BFS/DFS variations and shortest path algorithms",
-      resources: ["Graph Theory Basics", "Dijkstra's Algorithm Tutorial"]
-    },
-    {
-      area: "Concurrency & Threading",
-      severity: "high",
-      currentScore: 48,
-      attempts: 8,
-      avgScore: 65,
-      improvement: -12,
-      recommendation: "Study race conditions, locks, and async patterns",
-      resources: ["Java Concurrency in Practice", "OS Concepts - Threading"]
-    },
-    {
-      area: "API Design",
-      severity: "low",
-      currentScore: 78,
-      attempts: 15,
-      avgScore: 75,
-      improvement: 15,
-      recommendation: "Explore REST best practices and GraphQL fundamentals",
-      resources: ["REST API Design Guide", "GraphQL Documentation"]
-    }
-  ];
+  const weaknessAnalysis: WeaknessView[] = (insights?.weaknesses || []).map((w: any) => ({
+    area: w.area,
+    severity: (w.currentScore ?? 0) < 50 ? 'high' : (w.currentScore ?? 0) < 70 ? 'medium' : 'low',
+    currentScore: w.currentScore ?? 0,
+    attempts: w.attempts ?? 0,
+    avgScore: w.avgScore ?? 0,
+    improvement: w.improvement ?? 0,
+    recommendation: w.recommendation || `Practice more on ${w.area}`,
+    resources: [] as string[]
+  }));
 
-  const fallbackProgressHistory = [
-    { week: "Week 1", score: 58, testsTaken: 2, hoursStudied: 8 },
-    { week: "Week 2", score: 62, testsTaken: 3, hoursStudied: 12 },
-    { week: "Week 3", score: 65, testsTaken: 4, hoursStudied: 15 },
-    { week: "Week 4", score: 70, testsTaken: 5, hoursStudied: 18 },
-    { week: "Week 5", score: 73, testsTaken: 4, hoursStudied: 14 },
-    { week: "Week 6", score: 76, testsTaken: 6, hoursStudied: 20 },
-  ];
-
-  const progressHistory = derivedHistory?.progressSeries ?? fallbackProgressHistory;
+  const progressHistory: ProgressPoint[] = (insights?.progressSeries || []).map((p: any, idx: number) => ({
+    week: new Date(p.label).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    score: p.score ?? 0,
+    testsTaken: p.testsTaken ?? (idx + 1),
+    hoursStudied: p.hoursStudied ?? 0,
+  }));
 
   const recentAssessments = useMemo(() => derivedHistory?.sortedDesc.slice(0, 5) ?? [], [derivedHistory]);
 
-  const topicMastery = [
-    { topic: "Arrays & Strings", mastery: 92, questions: 45, timeSpent: 12 },
-    { topic: "Linked Lists", mastery: 85, questions: 28, timeSpent: 8 },
-    { topic: "Trees & Graphs", mastery: 68, questions: 32, timeSpent: 15 },
-    { topic: "Dynamic Programming", mastery: 45, questions: 18, timeSpent: 10 },
-    { topic: "Sorting & Searching", mastery: 88, questions: 35, timeSpent: 9 },
-    { topic: "Hash Tables", mastery: 90, questions: 30, timeSpent: 7 },
-    { topic: "Recursion", mastery: 75, questions: 25, timeSpent: 11 },
-    { topic: "System Design", mastery: 68, questions: 15, timeSpent: 14 },
-  ];
+  const topicMastery: any[] = [];
 
-  const learningPath = [
-    {
-      phase: "Current Week",
-      focus: "Dynamic Programming Fundamentals",
-      tasks: [
-        { title: "Complete Fibonacci variations", completed: true },
-        { title: "Master 0/1 Knapsack pattern", completed: true },
-        { title: "Solve 10 medium DP problems", completed: false },
-        { title: "Review memoization vs tabulation", completed: false }
-      ]
-    },
-    {
-      phase: "Next 2 Weeks",
-      focus: "Advanced Algorithms & System Design",
-      tasks: [
-        { title: "Study graph traversal algorithms", completed: false },
-        { title: "Practice distributed systems concepts", completed: false },
-        { title: "Complete system design case studies", completed: false }
-      ]
-    },
-    {
-      phase: "Month 2",
-      focus: "Mock Interviews & Real-world Projects",
-      tasks: [
-        { title: "Complete 15 mock interviews", completed: false },
-        { title: "Build full-stack project portfolio", completed: false },
-        { title: "Review top 100 company questions", completed: false }
-      ]
-    }
-  ];
+  const learningPath: any[] = [];
 
-  const aiInsights = [
-    {
-      type: "strength",
-      icon: CheckCircle2,
-      color: "text-[#00CC66]",
-      title: "Strong Foundation in Data Structures",
-      description: "You consistently score 85%+ on array, string, and hash table problems. This solid foundation will help you tackle more complex challenges."
-    },
-    {
-      type: "weakness",
-      icon: AlertTriangle,
-      color: "text-red-500",
-      title: "Dynamic Programming Gap",
-      description: "Your DP score (45%) is 23 points below average. This is a common pain point but critical for top-tier companies. Immediate focus recommended."
-    },
-    {
-      type: "opportunity",
-      icon: TrendingUp,
-      color: "text-[#6633FF]",
-      title: "Rapid Improvement in API Design",
-      description: "15% improvement in just 2 weeks! Your learning velocity here suggests you're ready for advanced backend topics."
-    },
-    {
-      type: "prediction",
-      icon: Target,
-      color: "text-[#AA66FF]",
-      title: "85% Score Achievable in 4 Weeks",
-      description: "Based on your current trajectory, maintaining 20 hours/week study will get you to target score by next month."
-    }
-  ];
+  const aiInsights: any[] = [];
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -318,7 +242,7 @@ export default function InsightsPage() {
               <span className="text-sm text-muted-foreground">Study Goal</span>
               <Target className="w-5 h-5 text-[#6633FF]" />
             </div>
-            <div className="text-3xl font-bold mb-1">90%</div>
+            <div className="text-3xl font-bold mb-1">{insights?.goals?.targetScore ?? 0}%</div>
             <p className="text-xs text-muted-foreground">Target accuracy</p>
           </Card>
 
@@ -349,7 +273,7 @@ export default function InsightsPage() {
               <Card className="p-6">
                 <h3 className="font-semibold text-lg mb-4">Skills Assessment</h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <RadarChart data={skillsData}>
+                  <RadarChart data={skillsData.length ? skillsData : [{ skill: 'No data', current: 0, target: 0, industry: 0 }] }>
                     <PolarGrid className="stroke-muted" />
                     <PolarAngleAxis dataKey="skill" className="text-xs" />
                     <PolarRadiusAxis angle={90} domain={[0, 100]} />
@@ -372,7 +296,7 @@ export default function InsightsPage() {
               <Card className="p-6">
                 <h3 className="font-semibold text-lg mb-4">Progress Over Time</h3>
                 <ResponsiveContainer width="100%" height={400}>
-                  <ComposedChart data={progressHistory}>
+                  <ComposedChart data={progressHistory.length ? progressHistory : [{ week: 'No data', score: 0, testsTaken: 0, hoursStudied: 0 }] }>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="week" className="text-xs" />
                     <YAxis yAxisId="left" className="text-xs" />
@@ -391,6 +315,34 @@ export default function InsightsPage() {
                 </ResponsiveContainer>
               </Card>
             </div>
+
+            {/* Skills Heatmap (simple grid) */}
+            <Card className="p-6">
+              <h3 className="font-semibold text-lg mb-4">Skills Heatmap</h3>
+              {insightsError && (
+                <div className="text-sm text-red-500 mb-2">{insightsError}</div>
+              )}
+              <div className="grid grid-cols-4 gap-2">
+                {(insights?.skillHeatmap || []).map((s: any, idx: number) => {
+                  const score = s.score ?? 0;
+                  const intensity = Math.min(100, Math.max(0, score));
+                  return (
+                    <div key={idx} className="p-3 rounded border" style={{
+                      background: `rgba(102, 51, 255, ${0.1 + intensity/200})`,
+                      borderColor: 'hsl(var(--border))'
+                    }}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="capitalize">{String(s.topic || 'unknown').replace('-', ' ')}</span>
+                        <span className="font-semibold">{score}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(!insights?.skillHeatmap || insights.skillHeatmap.length === 0) && (
+                  <div className="text-sm text-muted-foreground">No skill data yet</div>
+                )}
+              </div>
+            </Card>
 
             {/* Recent Assessments */}
             <Card className="p-6">
@@ -418,7 +370,7 @@ export default function InsightsPage() {
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
-                  {recentAssessments.map((entry) => (
+                  {(recentAssessments || []).map((entry) => (
                     <div key={entry.sessionId} className="rounded-xl border border-border bg-background p-4">
                       <div className="flex items-center justify-between">
                         <Badge variant="secondary" className="capitalize">{entry.topic.replace("-", " ")}</Badge>
@@ -478,7 +430,7 @@ export default function InsightsPage() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold mb-2">Critical Areas Needing Attention</h3>
                   <p className="text-muted-foreground mb-4">
-                    Our AI has identified {weaknessAnalysis.filter(w => w.severity === 'high').length} high-priority areas 
+                    Our AI has identified {weaknessAnalysis.filter((w: WeaknessView) => w.severity === 'high').length} high-priority areas 
                     where focused practice can significantly boost your score.
                   </p>
                   <Button>
@@ -490,7 +442,7 @@ export default function InsightsPage() {
             </Card>
 
             <div className="space-y-4">
-              {weaknessAnalysis.map((weakness, index) => (
+              {weaknessAnalysis.map((weakness: WeaknessView, index: number) => (
                 <Card key={index} className={`p-6 border-2 ${getSeverityColor(weakness.severity)}`}>
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
@@ -539,7 +491,7 @@ export default function InsightsPage() {
                       <div className="flex-1">
                         <span className="font-semibold">Recommended Resources:</span>
                         <div className="flex flex-wrap gap-2 mt-2">
-                          {weakness.resources.map((resource, idx) => (
+                          {weakness.resources.map((resource: string, idx: number) => (
                             <Badge key={idx} variant="outline" className="cursor-pointer hover:bg-primary hover:text-primary-foreground">
                               {resource}
                             </Badge>
@@ -568,7 +520,7 @@ export default function InsightsPage() {
             <Card className="p-6">
               <h3 className="font-semibold text-lg mb-4">Study Hours & Performance</h3>
               <ResponsiveContainer width="100%" height={400}>
-                <LineChart data={progressHistory}>
+                <LineChart data={progressHistory.length ? progressHistory : [{ week: 'No data', score: 0, hoursStudied: 0 }]}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="week" className="text-xs" />
                   <YAxis yAxisId="left" className="text-xs" />
@@ -588,50 +540,64 @@ export default function InsightsPage() {
             </Card>
 
             <div className="grid grid-cols-3 gap-4">
+              {(() => {
+                const totalHours = progressHistory.reduce<number>((sum: number, d: ProgressPoint) => sum + (d.hoursStudied || 0), 0);
+                const testsCompleted = history.length;
+                const firstScore = progressHistory[0]?.score ?? 0;
+                const lastScore = progressHistory[progressHistory.length - 1]?.score ?? 0;
+                const totalImprovement = (progressHistory.length > 1) ? (lastScore - firstScore) : 0;
+                const hoursGoal = (insights?.goals?.weeklyHours ?? 0) * 4;
+                const hoursPct = hoursGoal ? Math.min(100, Math.round((totalHours / hoursGoal) * 100)) : 0;
+                const testsPct = 0;
+                return (
+                  <>
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
                   <Clock className="w-8 h-8 text-[#6633FF]" />
                   <div>
-                    <div className="text-2xl font-bold">89h</div>
-                    <div className="text-sm text-muted-foreground">Total Study Time</div>
+                        <div className="text-2xl font-bold">{totalHours}h</div>
+                        <div className="text-sm text-muted-foreground">Total Study Time</div>
                   </div>
                 </div>
-                <Progress value={74} className="h-2" />
-                <p className="text-xs text-muted-foreground mt-2">74% towards 120h goal</p>
+                    <Progress value={hoursPct} className="h-2" />
+                    <p className="text-xs text-muted-foreground mt-2">{hoursPct}% towards {hoursGoal}h goal</p>
               </Card>
 
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
                   <Target className="w-8 h-8 text-[#00CC66]" />
                   <div>
-                    <div className="text-2xl font-bold">24</div>
-                    <div className="text-sm text-muted-foreground">Tests Completed</div>
+                        <div className="text-2xl font-bold">{testsCompleted}</div>
+                        <div className="text-sm text-muted-foreground">Tests Completed</div>
                   </div>
                 </div>
-                <Progress value={80} className="h-2" />
-                <p className="text-xs text-muted-foreground mt-2">80% towards 30 test goal</p>
+                    <Progress value={testsPct} className="h-2" />
+                    <p className="text-xs text-muted-foreground mt-2">{testsPct}% towards goal</p>
               </Card>
 
               <Card className="p-6">
                 <div className="flex items-center gap-3 mb-3">
                   <TrendingUp className="w-8 h-8 text-[#AA66FF]" />
                   <div>
-                    <div className="text-2xl font-bold">+18%</div>
-                    <div className="text-sm text-muted-foreground">Total Improvement</div>
+                        <div className="text-2xl font-bold">{totalImprovement >= 0 ? '+' : ''}{totalImprovement}%</div>
+                        <div className="text-sm text-muted-foreground">Total Improvement</div>
                   </div>
                 </div>
-                <Progress value={60} className="h-2" />
-                <p className="text-xs text-muted-foreground mt-2">On track for target</p>
+                    <Progress value={Math.min(100, Math.max(0, totalImprovement))} className="h-2" />
+                    <p className="text-xs text-muted-foreground mt-2">On track for target</p>
               </Card>
+                  </>
+                );
+              })()}
             </div>
           </TabsContent>
 
           {/* Topic Mastery Tab */}
           <TabsContent value="mastery" className="space-y-6">
             <Card className="p-6">
-              <h3 className="font-semibold text-lg mb-4">Topic-wise Mastery Levels</h3>
+              <h3 className="font-semibold text-lg mb-4">Topic-wise Mastery Levels (Upcoming)</h3>
               <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={topicMastery} layout="vertical">
+                <BarChart data={topicMastery.length ? topicMastery : [{ topic: 'No data', mastery: 0 }]} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis type="number" domain={[0, 100]} className="text-xs" />
                   <YAxis dataKey="topic" type="category" width={150} className="text-xs" />
@@ -682,62 +648,11 @@ export default function InsightsPage() {
                 <div className="flex-1">
                   <h3 className="text-xl font-bold mb-2">Personalized Learning Roadmap</h3>
                   <p className="text-muted-foreground">
-                    AI-generated path optimized for your learning style, weaknesses, and target companies.
-                    Follow this plan to reach 85% score in 4 weeks.
+                    This feature is coming soon. Your tailored learning plan will appear here once available.
                   </p>
                 </div>
               </div>
             </Card>
-
-            <div className="space-y-6">
-              {learningPath.map((phase, phaseIndex) => (
-                <Card key={phaseIndex} className="p-6">
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="p-3 rounded-lg bg-primary/10">
-                      <Target className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-xl font-semibold">{phase.phase}</h3>
-                        {phaseIndex === 0 && <Badge>Active</Badge>}
-                      </div>
-                      <p className="text-muted-foreground mb-4">Focus: {phase.focus}</p>
-                      
-                      <div className="space-y-2">
-                        {phase.tasks.map((task, taskIndex) => (
-                          <div key={taskIndex} className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${task.completed ? 'bg-[#00CC66] border-[#00CC66]' : 'border-muted-foreground'}`}>
-                              {task.completed && <CheckCircle2 className="w-4 h-4 text-white" />}
-                            </div>
-                            <span className={`flex-1 ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
-                              {task.title}
-                            </span>
-                            {!task.completed && (
-                              <Button size="sm" variant="ghost">
-                                <ArrowRight className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <span className="text-muted-foreground">Progress</span>
-                          <span className="font-semibold">
-                            {phase.tasks.filter(t => t.completed).length}/{phase.tasks.length} completed
-                          </span>
-                        </div>
-                        <Progress 
-                          value={(phase.tasks.filter(t => t.completed).length / phase.tasks.length) * 100} 
-                          className="h-2"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
           </TabsContent>
         </Tabs>
       </div>

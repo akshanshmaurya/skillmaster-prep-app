@@ -10,6 +10,8 @@ import userRoutes from './routes/user';
 import interviewRoutes from './routes/interview';
 import practiceRoutes from './routes/practice';
 import assessmentRoutes from './routes/assessment';
+import dashboardRoutes from './routes/dashboard';
+import insightsRoutes from './routes/insights';
 
 const app: Express = express();
 const PORT = process.env.PORT || 5000;
@@ -28,6 +30,8 @@ app.use('/api/user', userRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/practice', practiceRoutes);
 app.use('/api/tests', assessmentRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/insights', insightsRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

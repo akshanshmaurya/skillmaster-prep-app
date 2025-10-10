@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { AssessmentTrack, AssessmentTopic } from './Assessment';
 
 export interface User {
   _id?: ObjectId;
@@ -16,6 +17,37 @@ export interface User {
   studyHours?: number;
   accuracy?: number;
   avgTime?: number;
+  
+  // Aggregated metrics for dashboard
+  metrics?: {
+    assessments?: {
+      completed: number;
+      avgScore: number; // 0-100
+      avgAccuracy: number; // 0-1
+    };
+    practice?: {
+      completed: number;
+      avgScore: number; // 0-100
+      avgAccuracy: number; // 0-1
+    };
+    interviews?: {
+      completed: number;
+      avgOverall: number; // 0-100
+    };
+    overall?: {
+      testsCompleted: number;
+      avgScore: number; // 0-100 across all activities
+    };
+  };
+  
+  // Latest per-topic test scores (populated by services)
+  latestTestScores?: Record<string, {
+    track: AssessmentTrack;
+    topic: AssessmentTopic;
+    score: number; // 0-100
+    accuracy: number; // 0-1
+    updatedAt: Date;
+  }>;
   
   // User profile
   avatar?: string;
@@ -52,6 +84,13 @@ export interface User {
     questions: number;
     hours: number;
   }[];
+
+  // Optional study goals for insights
+  goals?: {
+    targetScore?: number; // 0-100
+    weeklyHours?: number; // suggested weekly study hours
+    targetDate?: Date; // optional target date for reaching goal
+  };
 }
 
 export interface UserStats {

@@ -395,6 +395,23 @@ export class PracticeService {
       }
     );
 
+    // Update user aggregates for dashboard
+    try {
+      const users = (await getDatabase()).collection('users');
+      await users.updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $inc: {
+            totalScore: score,
+            testsCompleted: 1
+          },
+          $set: { updatedAt: new Date() }
+        }
+      );
+    } catch (e) {
+      console.warn('Failed to update user aggregates after practice completion', e);
+    }
+
     return this.buildEvaluationFromSession(updatedSession);
   }
 

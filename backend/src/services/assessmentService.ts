@@ -540,6 +540,8 @@ export class AssessmentService {
       createdAt: updatedSession.updatedAt
     });
 
+    // Note: totalScore and testsCompleted already updated in updateUserPerformance
+
     return AssessmentService.buildEvaluationFromSession(updatedSession);
   }
 
