@@ -332,7 +332,26 @@ export default function TestsPage() {
         count: 10
       });
 
-      const sortedQuestions = [...response.questions].sort((a, b) => a.order - b.order);
+      // Client-side safety: dedupe by normalized prompt
+      const normalizePromptText = (value: string) =>
+        (value ?? '')
+          .toString()
+          .toLowerCase()
+          .replace(/```[\s\S]*?```/g, ' ')
+          .replace(/`[^`]*`/g, ' ')
+          .replace(/\b(question|q)\s*[:#.-]?\s*\d+\b/gi, ' ')
+          .replace(/[^\w\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      const seen = new Set<string>();
+      const unique = response.questions.filter((q) => {
+        const key = normalizePromptText(q.prompt);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const sortedQuestions = unique.sort((a, b) => a.order - b.order);
 
       setSessionId(response.sessionId);
       setQuestions(sortedQuestions);

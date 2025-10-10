@@ -131,7 +131,7 @@ router.get('/leaderboard', authMiddleware, async (req: Request, res: Response) =
     const usersCollection = db.collection<User>('users');
 
     const top = await usersCollection
-      .find({}, { projection: { email: 1, name: 1, avatar: 1, totalScore: 1, testsCompleted: 1 } })
+      .find({}, { projection: { email: 1, name: 1, avatar: 1, totalScore: 1, testsCompleted: 1, accuracy: 1 } })
       .sort({ totalScore: -1, testsCompleted: -1 })
       .limit(parseInt(limit.toString()))
       .toArray();
@@ -143,7 +143,8 @@ router.get('/leaderboard', authMiddleware, async (req: Request, res: Response) =
         avatar: u.avatar,
         rank: idx + 1,
         totalScore: u.totalScore ?? 0,
-        testsCompleted: u.testsCompleted ?? 0
+        testsCompleted: u.testsCompleted ?? 0,
+        accuracy: typeof u.accuracy === 'number' ? u.accuracy : undefined
       }))
     });
   } catch (error) {

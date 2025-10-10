@@ -177,8 +177,27 @@ export default function PracticePage() {
         count: 10
       });
 
+      // Client-side safety: dedupe by normalized prompt to avoid any duplicates slipping through
+      const normalizePromptText = (value: string) =>
+        (value ?? '')
+          .toString()
+          .toLowerCase()
+          .replace(/```[\s\S]*?```/g, ' ')
+          .replace(/`[^`]*`/g, ' ')
+          .replace(/\b(question|q)\s*[:#.-]?\s*\d+\b/gi, ' ')
+          .replace(/[^\w\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      const seen = new Set<string>();
+      const unique = generatedQuestions.filter((q) => {
+        const key = normalizePromptText(q.prompt);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       setSessionId(newSessionId);
-      setQuestions(generatedQuestions.sort((a, b) => a.order - b.order));
+      setQuestions(unique.sort((a, b) => a.order - b.order));
       setAnswers({});
       setSessionStatus(status === 'completed' ? 'completed' : 'active');
       setEvaluation(null);

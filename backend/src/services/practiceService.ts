@@ -10,7 +10,10 @@ import {
   PracticeAIResponse
 } from '../models/Practice';
 import { PRACTICE_QUESTION_BANK } from './practiceQuestionBank';
-import { GeminiAIService } from './geminiAI';
+import type { GeminiAIService } from './geminiAI';
+
+
+import { fastPromptDedupe } from '../utils/dedupe';
 
 const COLLECTION_NAME = 'practiceSessions';
 
@@ -202,7 +205,7 @@ function mapAIQuestions(
 ): PracticeQuestion[] {
   return questions.map((question, index) => ({
     id: question.id || `${topic}-ai-${Date.now()}-${index + 1}`,
-    topic,
+    topic, // Add the missing topic property
     difficulty,
     prompt: question.prompt,
     answerType: question.answerType,
@@ -247,7 +250,8 @@ export class PracticeService {
     }
 
     if (!questions.length) {
-      questions = sampleFallbackQuestions(topic, difficulty, count).map((question) => ({
+      const mult = Number(process.env.PRACTICE_POOL_MULTIPLIER || 2);
+      questions = sampleFallbackQuestions(topic, difficulty, Math.ceil(count * Math.max(1, Math.min(mult, 4)))).map((question) => ({
         ...question,
         source: 'fallback'
       }));
@@ -257,7 +261,13 @@ export class PracticeService {
       throw new Error('Unable to generate practice questions at this time.');
     }
 
-    const orderedQuestions: PracticeQuestionWithMeta[] = questions.slice(0, count).map((question, index) => ({
+    // Fast greedy dedupe with early stop to requested count
+    const deduped = fastPromptDedupe(questions, (q) => q.prompt, {
+      nearThreshold: 0.85,
+      limit: count
+    });
+
+    const orderedQuestions: PracticeQuestionWithMeta[] = deduped.map((question, index) => ({
       ...question,
       order: index
     }));

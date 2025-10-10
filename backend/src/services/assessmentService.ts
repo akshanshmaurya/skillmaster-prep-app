@@ -12,7 +12,8 @@ import {
   AssessmentHistoryItem
 } from '../models/Assessment';
 import { ASSESSMENT_QUESTION_BANK } from './assessmentQuestionBank';
-import { GeminiAIService } from './geminiAI';
+import type { GeminiAIService } from './geminiAI';
+import { fastPromptDedupe } from '../utils/dedupe';
 import { User } from '../models/User';
 
 const COLLECTION_NAME = 'assessmentSessions';
@@ -354,14 +355,21 @@ export class AssessmentService {
     }
 
     if (!questions.length) {
-      questions = sampleFallbackQuestions(topic, difficulty, count);
+      const mult = Number(process.env.ASSESSMENT_POOL_MULTIPLIER || 2);
+      questions = sampleFallbackQuestions(topic, difficulty, Math.ceil(count * Math.max(1, Math.min(mult, 4))));
     }
 
     if (!questions.length) {
       throw new Error('Unable to generate assessment questions at this time.');
     }
 
-    const orderedQuestions: AssessmentQuestionWithMeta[] = questions.slice(0, count).map((question, index) => ({
+    // Fast greedy dedupe with early stop to requested count
+    const deduped = fastPromptDedupe(questions, (q) => q.prompt, {
+      nearThreshold: 0.85,
+      limit: count
+    });
+
+    const orderedQuestions: AssessmentQuestionWithMeta[] = deduped.map((question, index) => ({
       ...question,
       order: index
     }));
