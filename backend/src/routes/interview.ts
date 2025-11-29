@@ -20,6 +20,7 @@ import {
 import { ScoringService } from '../services/scoring';
 import { GeminiAIService } from '../services/geminiAI';
 import { CodeExecutionService } from '../services/codeExecution';
+import { HackerEarthExecutionService } from '../services/hackerEarth';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
@@ -37,7 +38,8 @@ try {
   console.warn('⚠️ Gemini AI not available:', error);
 }
 
-  const codeExecutionService = new CodeExecutionService();
+  const localExecutionService = new CodeExecutionService();
+  const heExecutionService = new HackerEarthExecutionService();
 
 // Utility: timeout wrapper to prevent long AI waits
 async function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
@@ -1011,7 +1013,11 @@ router.post('/execute-code', authMiddleware, async (req: Request, res: Response)
       return res.status(400).json({ error: 'Code and language are required' });
     }
 
-    const result = await codeExecutionService.executeCode(code, language, testCases);
+    // Prefer HackerEarth online judge when credentials are present; fallback to local
+    const heReady = !!process.env.HE_CLIENT_SECRET;
+    const result = heReady
+      ? await heExecutionService.executeCode(code, language, testCases)
+      : await localExecutionService.executeCode(code, language, testCases);
 
     res.status(200).json({
       message: 'Code executed successfully',
@@ -1049,13 +1055,17 @@ router.post('/execute-code', authMiddleware, async (req: Request, res: Response)
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // If code submitted, execute against question test cases (target 5: 3 simple, 2 edge)
+  // If code submitted, execute against question test cases (target 5: 3 simple, 2 edge)
+  // Test cases are designed for STDIN/STDOUT with exact-match expectedOutput.
     let executionResult: any = undefined;
     if (code && language) {
       try {
         const q = await questionsCollection.findOne({ id: questionId });
         const testCases = q?.testCases && Array.isArray(q.testCases) ? q.testCases.map(tc => ({ input: tc.input, expectedOutput: tc.expectedOutput })) : undefined;
-        executionResult = await codeExecutionService.executeCode(code, language, testCases);
+        const heReady = !!process.env.HE_CLIENT_SECRET;
+        executionResult = heReady
+          ? await heExecutionService.executeCode(code, language, testCases)
+          : await localExecutionService.executeCode(code, language, testCases);
       } catch (execErr) {
         executionResult = { success: false, error: 'Execution failed' };
       }

@@ -352,9 +352,21 @@ Keep it concise (2-3 sentences) and professional.`;
 Return JSON ONLY, as an array where each item has exactly these fields:
 id, title, description, type, difficulty, category, tags, companies, roles, timeLimit, testCases.
 
-testCases must contain five entries per question. Each entry has input (string), expectedOutput (string), explanation (string).
+testCases must contain FIVE entries per question. Each entry has:
+- input (string): the exact STDIN the program will receive
+- expectedOutput (string): the EXACT final STDOUT the program must produce (trimmed), with no labels or extra words
+- explanation (string): short reasoning
 
-Rules:
+Strict IO rules for coding/dsa questions (HackerEarth-friendly):
+- The input must be raw values only, no variable labels (NOT like "nums=[1,2], k=2").
+- Use space-separated tokens and/or newlines. Prefer simple formats like:
+  - Single integer: "5"
+  - Array: first the length, then the elements on one line: "4\n2 5 1 8"
+  - String: just the string (no quotes)
+  - Multiple params: put each on a new line, e.g., "4\n2 5 1 8\n3"
+- The expectedOutput must be exactly what should be printed (or returned and then printed), with no brackets unless the answer is truly a list printed as e.g. "1 2 3" or JSON-like if specified by problem. Avoid trailing spaces.
+
+General rules:
 - type is one of: dsa, system-design, behavioral, coding
 - Prefer types in [${allowedTypes.join(', ')}]
 - difficulty is one of: easy, medium, hard
@@ -759,6 +771,11 @@ Current phase: ${currentPhase}`;
   3. Encourages the candidate to think out loud
   4. Maintains a supportive tone
   5. Calibrates difficulty using performance if provided.`;
+    }
+
+    // For coding/DSA questions: include explicit I/O format guidance for HackerEarth-style STDIN/STDOUT
+    if (/^(coding|dsa)$/i.test(String(questionType))) {
+      base += `\n\nAdditionally, include two short sections in your response:\n\nInput Format:\n- Spell out, line-by-line, what the candidate should read from STDIN. For example:\n  - Line 1: integer n (array length)\n  - Line 2: n space-separated integers (the array)\n  - Line 3: integer k (window size)\n\nOutput Format:\n- Describe exactly what to print to STDOUT (no extra labels or punctuation; trim whitespace).`;
     }
 
     return base;

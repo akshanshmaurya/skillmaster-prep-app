@@ -59,14 +59,34 @@ npm start
 
 The server will start on `http://localhost:5000`
 
+### Optional: Enable Online Code Execution (HackerEarth)
+
+Add your HackerEarth credentials to `backend/.env` to run user code via the online compiler instead of local compilers:
+
+```env
+HE_API_URL=https://api.hackerearth.com/v3/code/run/
+HE_CLIENT_ID=your-client-id     # optional
+HE_CLIENT_SECRET=your-secret    # required
+HE_TIME_LIMIT_SECONDS=5
+HE_MEMORY_LIMIT_KB=262144
+HE_TIMEOUT_MS=15000
+```
+
+Notes:
+
+- When enabled, coding answers in Interview use the online judge. If not set, the app falls back to local execution.
+- Your solution functions should follow the signature used in the editor templates: `solution(input: string)` for JS/Python and print the result to STDOUT.
+
 ## API Endpoints
 
 ### Authentication
+
 
 #### POST `/api/auth/signup`
 Create a new user account.
 
 **Request Body:**
+ 
 ```json
 {
   "email": "user@example.com",
@@ -76,6 +96,7 @@ Create a new user account.
 ```
 
 **Response:**
+ 
 ```json
 {
   "message": "User created successfully",
@@ -88,10 +109,12 @@ Create a new user account.
 }
 ```
 
+
 #### POST `/api/auth/login`
 Login to existing account.
 
 **Request Body:**
+ 
 ```json
 {
   "email": "user@example.com",
@@ -100,6 +123,7 @@ Login to existing account.
 ```
 
 **Response:**
+ 
 ```json
 {
   "message": "Login successful",
@@ -115,15 +139,18 @@ Login to existing account.
 }
 ```
 
+
 #### GET `/api/auth/me`
 Get current authenticated user.
 
 **Headers:**
-```
+ 
+```text
 Authorization: Bearer <jwt-token>
 ```
 
 **Response:**
+ 
 ```json
 {
   "user": {
@@ -137,15 +164,18 @@ Authorization: Bearer <jwt-token>
 
 ### User Data
 
+
 #### PATCH `/api/user/update`
 Update user profile information.
 
 **Headers:**
-```
+ 
+```text
 Authorization: Bearer <jwt-token>
 ```
 
 **Request Body:**
+ 
 ```json
 {
   "name": "Updated Name",
@@ -155,15 +185,18 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
+
 #### PATCH `/api/user/stats`
 Update user statistics.
 
 **Headers:**
-```
+ 
+```text
 Authorization: Bearer <jwt-token>
 ```
 
 **Request Body:**
+ 
 ```json
 {
   "totalScore": 1800,
@@ -173,11 +206,13 @@ Authorization: Bearer <jwt-token>
 }
 ```
 
+
 #### GET `/api/user/:id`
 Get user by ID.
 
 **Headers:**
-```
+ 
+```text
 Authorization: Bearer <jwt-token>
 ```
 

@@ -8,6 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Boxes } from "@/components/ui/background-boxes";
+import { Building2, Briefcase, Play as PlayIcon } from "lucide-react";
 import {
   MessageSquare,
   Mic,
@@ -149,14 +153,15 @@ export default function InterviewPage() {
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [currentPhase, setCurrentPhase] = useState<"intro" | "technical" | "behavioral" | "questions">("intro");
-  const [micEnabled, setMicEnabled] = useState(true);
-  const [videoEnabled, setVideoEnabled] = useState(true);
-  const [audioEnabled, setAudioEnabled] = useState(true);
+  // Simplified setup: remove equipment checks; keep only essential config fields
   const [timeElapsed, setTimeElapsed] = useState(0);
   
   // Interview Configuration
   const [selectedCompany, setSelectedCompany] = useState("google");
   const [selectedRole, setSelectedRole] = useState("swe");
+  // Free-typing fields for a cleaner UX on setup
+  const [companyText, setCompanyText] = useState("Google");
+  const [roleText, setRoleText] = useState("Software Engineer");
   const [difficulty, setDifficulty] = useState("medium");
   const [preferredLanguage, setPreferredLanguage] = useState("javascript");
   const [interviewType, setInterviewType] = useState("mixed");
@@ -754,286 +759,122 @@ export default function InterviewPage() {
       <div className="p-8 max-w-7xl">
         {currentView === "setup" && (
           <>
-            {/* Setup Screen */}
-            <section className="mb-8">
-              <h1 className="text-4xl font-bold mb-2">AI Interview Simulator</h1>
-              <p className="text-muted-foreground text-lg">
-                Practice with realistic company-specific interview scenarios
-              </p>
-            </section>
-
-            <div className="grid grid-cols-[2fr_1fr] gap-6">
-              <div className="space-y-6">
-                {/* Interview Configuration */}
-                <Card className="p-6">
-                  <h2 className="text-xl font-semibold mb-4">Configure Your Interview</h2>
-                  
-                  {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                      {error}
-                    </div>
-                  )}
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Target Company</Label>
-                      <Select value={selectedCompany} onValueChange={setSelectedCompany}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.companies.map(company => (
-                            <SelectItem key={company.value} value={company.value}>
-                              {company.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Role</Label>
-                      <Select value={selectedRole} onValueChange={setSelectedRole}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.roles.map(role => (
-                            <SelectItem key={role.value} value={role.value}>
-                              {role.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Experience Level</Label>
-                      <Select value={experienceLevel} onValueChange={setExperienceLevel}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.experienceLevels.map(level => (
-                            <SelectItem key={level.value} value={level.value}>
-                              {level.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Difficulty Level</Label>
-                      <Select value={difficulty} onValueChange={setDifficulty}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.difficulties.map(diff => (
-                            <SelectItem key={diff.value} value={diff.value}>
-                              {diff.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Preferred Language</Label>
-                      <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.languages.map(lang => (
-                            <SelectItem key={lang.value} value={lang.value}>
-                              {lang.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Interview Type</Label>
-                      <Select value={interviewType} onValueChange={setInterviewType}>
-                        <SelectTrigger className="bg-background">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {interviewSetup.interviewTypes.map(type => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Setup Check */}
-                <Card className="p-6">
-                  <h2 className="text-xl font-semibold mb-4">Equipment Check</h2>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {micEnabled ? <Mic className="w-5 h-5 text-[#00CC66]" /> : <MicOff className="w-5 h-5 text-red-500" />}
-                        <span>Microphone</span>
-                      </div>
-                      <Button
-                        variant={micEnabled ? "default" : "outline"}
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await navigator.mediaDevices.getUserMedia({ audio: true });
-                            setMicEnabled(true);
-                          } catch {
-                            setMicEnabled(false);
-                          }
-                        }}
-                      >
-                        {micEnabled ? "Tested" : "Test Mic"}
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {videoEnabled ? <Video className="w-5 h-5 text-[#00CC66]" /> : <VideoOff className="w-5 h-5 text-red-500" />}
-                        <span>Camera</span>
-                      </div>
-                      <Button
-                        variant={videoEnabled ? "default" : "outline"}
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await navigator.mediaDevices.getUserMedia({ video: true });
-                            setVideoEnabled(true);
-                          } catch {
-                            setVideoEnabled(false);
-                          }
-                        }}
-                      >
-                        {videoEnabled ? "Tested" : "Test Camera"}
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-                      <div className="flex items-center gap-3">
-                        {audioEnabled ? <Volume2 className="w-5 h-5 text-[#00CC66]" /> : <VolumeX className="w-5 h-5 text-red-500" />}
-                        <span>Audio Output</span>
-                      </div>
-                      <Button
-                        variant={audioEnabled ? "default" : "outline"}
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                            const osc = ctx.createOscillator();
-                            osc.connect(ctx.destination);
-                            osc.start();
-                            setTimeout(() => {
-                              osc.stop();
-                              ctx.close();
-                            }, 200);
-                            setAudioEnabled(true);
-                          } catch {
-                            setAudioEnabled(false);
-                          }
-                        }}
-                      >
-                        {audioEnabled ? "Tested" : "Test Sound"}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 mt-6">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => setCurrentView("profile")}
-                      disabled={isLoading}
-                    >
-                      Back
-                    </Button>
-                    <Button
-                      size="lg"
-                      className="flex-1"
-                      onClick={saveProfile}
-                      disabled={isLoading}
-                    >
-                      <Save className="w-5 h-5 mr-2" />
-                      Save Profile
-                    </Button>
-                    <Button
-                      size="lg"
-                      className="flex-1"
-                      onClick={startInterview}
-                      disabled={isLoading}
-                    >
-                      <Play className="w-5 h-5 mr-2" />
-                      Start Interview
-                    </Button>
-                  </div>
-                </Card>
+            {/* Hero section with gradient background and animated boxes */}
+            <div className="relative -mx-8 mb-10 overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent" />
+              <Boxes className="opacity-[0.5]" />
+              <div className="relative z-10 px-8 py-10 text-center">
+                <h1 className="text-foreground text-4xl md:text-5xl font-bold tracking-tight mb-3">Configure Your Interview</h1>
+                <p className="text-muted-foreground text-base md:text-lg">Type your preferences, choose options, and start your AI-powered mock interview.</p>
+                <div className="mt-4 flex items-center justify-center gap-2 text-xs md:text-sm text-muted-foreground/80">
+                  <Badge variant="secondary">Realistic prompts</Badge>
+                  <Badge variant="secondary">Adaptive difficulty</Badge>
+                  <Badge variant="secondary">Coding & Behavioral</Badge>
+                </div>
               </div>
+            </div>
 
-              {/* Tips Panel */}
-              <div>
-                <Card className="p-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Lightbulb className="w-5 h-5 text-yellow-500" />
-                    <h3 className="font-semibold">Interview Tips</h3>
+            <div className="max-w-3xl mx-auto">
+              <Card className="p-6 md:p-8 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+                {error && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {error}
                   </div>
-                  
-                  <div className="space-y-3 text-sm">
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium mb-1">🎯 Structure Your Answers</p>
-                      <p className="text-muted-foreground text-xs">Use STAR method for behavioral questions</p>
-                    </div>
-                    
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium mb-1">💡 Think Out Loud</p>
-                      <p className="text-muted-foreground text-xs">Explain your thought process clearly</p>
-                    </div>
-                    
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium mb-1">⏱️ Time Management</p>
-                      <p className="text-muted-foreground text-xs">Keep answers concise (2-3 minutes)</p>
-                    </div>
-                    
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium mb-1">❓ Ask Questions</p>
-                      <p className="text-muted-foreground text-xs">Clarify requirements before solving</p>
-                    </div>
-                    
-                    <div className="p-3 bg-muted rounded-lg">
-                      <p className="font-medium mb-1">🔄 Practice Regularly</p>
-                      <p className="text-muted-foreground text-xs">Consistency improves confidence</p>
-                    </div>
-                  </div>
-                </Card>
+                )}
 
-                <Card className="p-6 mt-6">
-                  <h3 className="font-semibold mb-3">Recent Sessions</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span>Google SWE</span>
-                      <Badge>78%</Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span>Amazon Backend</span>
-                      <Badge>82%</Badge>
-                    </div>
-                    <div className="flex items-center justify-between p-2 bg-muted rounded">
-                      <span>Meta Frontend</span>
-                      <Badge>75%</Badge>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="md:col-span-2">
+                    <Label className="text-sm font-medium mb-2 block">Company</Label>
+                    <InputGroup>
+                      <InputGroupAddon>
+                        <Building2 className="text-muted-foreground" />
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        value={companyText}
+                        onChange={(e) => setCompanyText(e.target.value)}
+                        placeholder="e.g., Google"
+                      />
+                    </InputGroup>
                   </div>
-                </Card>
-              </div>
+
+                  <div className="md:col-span-2">
+                    <Label className="text-sm font-medium mb-2 block">Role</Label>
+                    <InputGroup>
+                      <InputGroupAddon>
+                        <Briefcase className="text-muted-foreground" />
+                      </InputGroupAddon>
+                      <InputGroupInput
+                        value={roleText}
+                        onChange={(e) => setRoleText(e.target.value)}
+                        placeholder="e.g., Software Engineer"
+                      />
+                    </InputGroup>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Experience Level</Label>
+                    <Select value={experienceLevel} onValueChange={setExperienceLevel}>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {interviewSetup.experienceLevels.map(level => (
+                          <SelectItem key={level.value} value={level.value}>
+                            {level.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium mb-2 block">Preferred Language</Label>
+                    <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {interviewSetup.languages.map(lang => (
+                          <SelectItem key={lang.value} value={lang.value}>
+                            {lang.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <Label className="text-sm font-medium mb-2 block">Interview Type</Label>
+                    <Select value={interviewType} onValueChange={setInterviewType}>
+                      <SelectTrigger className="bg-background">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {interviewSetup.interviewTypes.map(type => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <Button
+                    size="lg"
+                    className="w-full bg-gradient-to-r from-primary to-purple-600 hover:from-primary/90 hover:to-purple-500"
+                    onClick={() => {
+                      setSelectedCompany(companyText.trim().toLowerCase());
+                      setSelectedRole(roleText.trim());
+                      startInterview();
+                    }}
+                    disabled={isLoading || !companyText.trim() || !roleText.trim()}
+                  >
+                    <PlayIcon className="w-5 h-5 mr-2" /> Start Interview
+                  </Button>
+                </div>
+              </Card>
             </div>
           </>
         )}
@@ -1136,39 +977,33 @@ export default function InterviewPage() {
         {currentView === "interview" && (
           <>
             {/* Interview Screen */}
-            <div className="fixed top-16 left-64 right-0 bottom-0 bg-background flex flex-col overflow-hidden">
+            <div className="fixed top-14 left-64 right-0 bottom-0 bg-background flex flex-col overflow-hidden">
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-                <div className="flex items-center gap-4">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-card/40 backdrop-blur">
+                <div className="flex items-center gap-3">
                   <Badge className="bg-red-500">
                     <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>
-                    Recording
+                    Live
                   </Badge>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-muted-foreground" />
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Clock className="w-4 h-4" />
                     <span className="font-mono font-semibold">{formatTime(timeElapsed)}</span>
                   </div>
-                  <Badge variant="outline">
-                    {selectedCompany} • {selectedRole}
-                  </Badge>
+                  <span className="text-sm text-muted-foreground">{selectedCompany} • {selectedRole}</span>
                 </div>
-
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={togglePause} disabled={isLoading}>
-                    <Pause className="w-4 h-4 mr-2" />
-                    {isPaused ? 'Resume' : 'Pause'}
+                    <Pause className="w-4 h-4 mr-2" />{isPaused ? 'Resume' : 'Pause'}
                   </Button>
-                  <Button variant="destructive" size="sm" onClick={endInterview} disabled={isLoading}>
-                    End Interview
-                  </Button>
+                  <Button variant="destructive" size="sm" onClick={endInterview} disabled={isLoading}>End</Button>
                 </div>
               </div>
 
               {/* Main Content */}
-              <div className={`flex-1 grid ${showCodePanel ? 'grid-cols-[1fr_520px]' : 'grid-cols-[1fr_350px]'} overflow-hidden min-h-0`}>
+              <div className={`flex-1 grid ${showCodePanel ? 'grid-cols-[1fr_560px]' : 'grid-cols-[1fr_360px]'} overflow-hidden min-h-0`}>
                 {/* Chat Area */}
                 <div className="flex flex-col min-h-0">
-                  <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5 min-h-0">
                     {error && (
                       <div className="mb-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
                         {error}
@@ -1186,8 +1021,8 @@ export default function InterviewPage() {
                             <span className="text-white font-semibold">You</span>
                           )}
                         </div>
-                        <div className={`flex-1 max-w-2xl ${message.role === "candidate" ? "text-right" : ""}`}>
-                          <div className={`inline-block p-4 rounded-lg ${message.role === "interviewer" ? "bg-card" : "bg-primary text-primary-foreground"}`}>
+                        <div className={`flex-1 max-w-3xl ${message.role === "candidate" ? "text-right" : ""}`}>
+                          <div className={`inline-block p-4 rounded-lg leading-relaxed ${message.role === "interviewer" ? "bg-card" : "bg-primary text-primary-foreground"}`}>
                             {message.role === 'interviewer' ? (
                               <div className="prose prose-sm max-w-none">
                                 {renderMarkdown(message.content)}
@@ -1216,12 +1051,12 @@ export default function InterviewPage() {
                   {/* Coding editor moved to right column when visible */}
 
                   {/* Input Area */}
-                  <div className="border-t border-border p-4 shrink-0">
+                  <div className="border-t border-border p-4 shrink-0 bg-card/30">
                     <form className="flex gap-3" onSubmit={(e) => { e.preventDefault(); sendResponse(); }}>
                       <Textarea
                         value={candidateResponse}
                         onChange={(e) => setCandidateResponse(e.target.value)}
-                        placeholder="Type your response here or use voice input..."
+                        placeholder="Type your response..."
                         className="min-h-[80px] bg-background"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
@@ -1231,16 +1066,6 @@ export default function InterviewPage() {
                         }}
                       />
                       <div className="flex flex-col gap-2">
-                        <Button
-                          variant={micEnabled ? "default" : "outline"}
-                          size="icon"
-                          onClick={() => setMicEnabled(!micEnabled)}
-                          aria-pressed={micEnabled}
-                          title={micEnabled ? 'Mute mic' : 'Unmute mic'}
-                          type="button"
-                        >
-                          {micEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                        </Button>
                         <Button type="submit" size="icon" disabled={isLoading || !candidateResponse.trim()} title="Send (Enter)">
                           <MessageSquare className="w-4 h-4" />
                         </Button>
@@ -1253,9 +1078,8 @@ export default function InterviewPage() {
                 {!showCodePanel && (
                 <div className="border-l border-border bg-card p-4 overflow-y-auto min-h-0">
                   <Tabs defaultValue="analysis">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="analysis">Analysis</TabsTrigger>
-                      <TabsTrigger value="notes">Notes</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-1">
+                      <TabsTrigger value="analysis">Overview</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="analysis" className="space-y-4 mt-4">
@@ -1301,29 +1125,27 @@ export default function InterviewPage() {
                       {/* Moved code editor inline when attempting; keep side panel clean */}
                     </TabsContent>
 
-                    <TabsContent value="notes" className="mt-4">
-                      <Textarea
-                        placeholder="Take notes during your interview..."
-                        className="min-h-[400px] bg-background"
-                      />
-                    </TabsContent>
+                    {/* Notes panel removed for a cleaner layout */}
                   </Tabs>
                 </div>
                 )}
                 {showCodePanel && currentQuestion && (currentQuestion.type === 'dsa' || currentQuestion.type === 'coding') && (
-                <div className="border-l border-border bg-card p-4 overflow-y-auto min-h-0">
-                  <Card className="p-4">
-                    <h4 className="text-sm font-semibold mb-3">Coding Workspace</h4>
-                    <div className="prose prose-sm max-w-none mb-4">
+                <div className="border-l border-border bg-card p-0 overflow-y-auto min-h-0">
+                  <div className="grid grid-rows-[auto_1fr] h-full">
+                    <div className="p-4 border-b border-border">
+                      <h4 className="text-sm font-semibold">Coding Workspace</h4>
+                    </div>
+                    <div className="p-4 space-y-4 overflow-y-auto">
+                      <div className="prose prose-sm max-w-none">
                       {renderMarkdown((() => {
                         const title = `### ${currentQuestion.title}`;
                         const meta = `\n\n**Type:** ${currentQuestion.type}  \
 **Difficulty:** ${currentQuestion.difficulty}  \
 **Category:** ${currentQuestion.category || 'general'}`;
                         const desc = `\n\n${currentQuestion.description || ''}`;
-                        // Try to extract Input/Output/Constraints if present; else add a minimal structure
+                        // Prefer explicit IO description (line-by-line) for HackerEarth style
                         const hasStructure = /input\s*format|output\s*format|constraints/i.test(currentQuestion.description || '');
-                        const structure = hasStructure ? '' : `\n\n#### Input Format\n- As described in the problem.\n\n#### Output Format\n- As described in the problem.\n\n#### Constraints\n- Reasonable limits for the given difficulty.`;
+                        const structure = hasStructure ? '' : `\n\n#### Input Format\n- Line 1: (example) integer n (array length)\n- Line 2: (example) n space-separated integers (the array)\n- Line 3: (example) integer k (window size)\n\n#### Output Format\n- Print exactly the required result with no extra text.\n\n#### Constraints\n- Reasonable limits for the given difficulty.`;
                         const samples = (currentQuestion as any).samples && (currentQuestion as any).samples.length
                           ? `\n\n#### Sample Tests\n${(currentQuestion as any).samples.slice(0,3).map((s:any,i:number)=>`Test ${i+1}:\n- Input: \`${s.input}\`\n- Expected: \`${s.expectedOutput}\`\n- Explanation: ${s.explanation || ''}`).join('\n\n')}`
                           : (currentQuestion.testCases && currentQuestion.testCases.length
@@ -1334,17 +1156,19 @@ export default function InterviewPage() {
                           : '';
                         return `${title}${meta}${desc}${structure}${samples}${hiddenTests}`;
                       })())}
-                    </div>
+                      </div>
                     <CodeEditor
                       language={selectedLanguage}
                       onLanguageChange={setSelectedLanguage}
                       onCodeChange={setCode}
                       onRunCode={handleCodeExecution}
                       initialCode={code}
+                      height={440}
                       isRunning={isCodeRunning}
                       executionResult={executionResult}
                     />
-                  </Card>
+                    </div>
+                  </div>
                 </div>
                 )}
               </div>

@@ -15,6 +15,7 @@ interface CodeEditorProps {
   onRunCode: (code: string, language: string) => void;
   initialCode?: string;
   isRunning?: boolean;
+  height?: number | string;
   executionResult?: {
     success: boolean;
     output?: string;
@@ -38,14 +39,22 @@ const languageOptions = [
 
 const defaultCode = {
   javascript: `// Write your solution here
-function solution() {
-    // Your code goes here
-    return;
+// Expected signature: solution(input: string) => any
+function solution(input) {
+    // Parse the input string and return your answer
+    // Example: if input is "1 2" return the sum
+    // const [a, b] = input.split(/\s+/).map(Number);
+    // return a + b;
+    return '';
 }`,
   python: `# Write your solution here
-def solution():
-    # Your code goes here
-    pass`,
+# Expected signature: solution(input: str) -> Any
+def solution(input: str):
+    # Parse the input string and return your answer
+    # Example: if input is "1 2" return the sum
+    # a, b = map(int, input.split())
+    # return a + b
+    return ''`,
   java: `// Write your solution here
 public class Solution {
     public static void main(String[] args) {
@@ -89,6 +98,7 @@ export default function CodeEditor({
   onRunCode,
   initialCode,
   isRunning = false,
+  height = 360,
   executionResult
 }: CodeEditorProps) {
   const [code, setCode] = useState(initialCode || defaultCode[language as keyof typeof defaultCode] || '');
@@ -194,7 +204,7 @@ export default function CodeEditor({
       {/* Monaco Editor */}
       <Card className="overflow-hidden">
         <Editor
-          height="320px"
+          height={typeof height === 'number' ? `${height}px` : height}
           language={language}
           value={code}
           onChange={handleCodeChange}
