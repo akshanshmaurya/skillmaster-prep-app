@@ -103,7 +103,7 @@ Unlike generic coding platforms, PrepPro provides an **integrated experience** c
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (Next.js 15)                     │
+│                        FRONTEND (Next.js 15)                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  Pages: Dashboard | Practice | Tests | Interview | Insights     │
 │         Leaderboard | Profile | Settings                        │
@@ -115,26 +115,26 @@ Unlike generic coding platforms, PrepPro provides an **integrated experience** c
                              │ REST API
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      BACKEND (Express.js)                        │
+│                      BACKEND (Express.js)                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Routes: /auth | /user | /interview | /practice | /tests        │
-│          /dashboard | /insights                                  │
+│          /dashboard | /insights                                 │
 ├─────────────────────────────────────────────────────────────────┤
-│  Services:                                                       │
-│  ├── GeminiAIService (question gen, feedback, conversation)    │
+│  Services:                                                      │
+│  ├── GeminiAIService (question gen, feedback, conversation)     │
 │  ├── CodeExecutionService (8 languages, sandboxed)              │
 │  ├── ScoringService (multi-dimensional evaluation)              │
 │  ├── AssessmentService (session lifecycle, grading)             │
 │  └── PracticeService (topic-based practice)                     │
 ├─────────────────────────────────────────────────────────────────┤
-│  Models: User | Interview | Assessment | Practice                │
+│  Models: User | Interview | Assessment | Practice               │
 └────────────────────────────┬────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                        DATA LAYER                                │
+│                        DATA LAYER                               │
 ├─────────────────────────────────────────────────────────────────┤
-│  MongoDB (Users, Sessions, Questions, Analytics)                 │
+│  MongoDB (Users, Sessions, Questions, Analytics)                │
 │  Google Gemini API (AI generation)                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
